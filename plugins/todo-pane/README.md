@@ -27,6 +27,8 @@ Claude Codeで長く作業していると、途中で寄り道や確認をはさ
 /plugin install todo-pane@aromarious
 ```
 
+インストールの直後に「Configure todo-pane」という設定画面が出る。何も入れずにスキップすれば、初期値の `.claude` の下にファイルが作られる。
+
 ## TODOペインが見えないとき
 
 Claude Code本体の差分ペイン（gitの変更を表示するペイン）が開いていると、TODOペインはその後ろに隠れる。`/todo`を実行しても前には出てこない。右側に変更ファイルの一覧や「Diff unavailable」が出ていたら、それは差分ペインなので、`/diff`を実行するか右上の✕で閉じる。
