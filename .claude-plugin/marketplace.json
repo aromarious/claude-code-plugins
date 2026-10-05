@@ -1,0 +1,12 @@
+{
+  "name": "aromarious",
+  "owner": { "name": "aromarious" },
+  "description": "aromarious's Claude Code plugins",
+  "plugins": [
+    {
+      "name": "todo-pane",
+      "source": "./plugins/todo-pane",
+      "description": "Shows a per-session todo list (what we are working on) and pin board (pinned notes) in side panes"
+    }
+  ]
+}

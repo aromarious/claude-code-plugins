@@ -1,0 +1,18 @@
+{
+  "name": "todo-pane",
+  "version": "0.1.0",
+  "description": "Shows this session's todo list (what we are working on) and pin board (pinned notes) in side panes, one file per session under a directory",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "dir": {
+      "type": "string",
+      "title": "todo・ピン留めファイルのディレクトリ",
+      "description": "todo/<名前>.md と pin/<名前>.md を置くディレクトリ。作業ディレクトリからの相対パス（絶対パスも可）",
+      "default": ".claude"
+    }
+  },
+  "license": "MIT",
+  "author": {
+    "name": "aromarious"
+  }
+}
