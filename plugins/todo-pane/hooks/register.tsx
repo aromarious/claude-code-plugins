@@ -32,6 +32,50 @@ export const lastTitle = (text: string): string | undefined => {
   }
   return title
 }
+// Local date as YYYY-MM-DD (toISOString would be UTC)
+export const today = () => {
+  const d = new Date()
+  const z = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}`
+}
+const doneHeading = (date: string) => `## やったこと（${date}）`
+const DONE_RE = /^## やったこと（(\d{4}-\d{2}-\d{2})）\s*$/
+const LEGACY_RE = /^## 今日やったこと\s*$/
+
+// Date changed: move the old "やったこと" section out of the todo text. Pure; the caller does the I/O.
+export const rollover = (text: string, today: string): { text: string; archived?: { date: string; body: string } } => {
+  const lines = text.split('\n')
+  const i = lines.findIndex(l => DONE_RE.test(l) || LEGACY_RE.test(l))
+  if (i < 0) return { text }
+  if (LEGACY_RE.test(lines[i])) {
+    lines[i] = doneHeading(today)
+    return { text: lines.join('\n') }
+  }
+  const date = lines[i].match(DONE_RE)![1]
+  if (date >= today) return { text }
+  let j = i + 1
+  while (j < lines.length && !lines[j].startsWith('## ')) j++
+  const body = lines.slice(i + 1, j).join('\n').trim()
+  const out = [...lines.slice(0, i), doneHeading(today), '', ...lines.slice(j)].join('\n')
+  return body ? { text: out, archived: { date, body } } : { text: out }
+}
+
+// New content for <dir>/todo/done/<date>.md with this session's section appended.
+export const appendDone = (existing: string | undefined, date: string, sessionLabel: string, body: string) => {
+  const head = existing ? existing.replace(/\s+$/, '') + '\n\n' : `# ${date} にやったこと\n\n`
+  return `${head}## セッション ${sessionLabel}\n\n${body}\n`
+}
+
+// Last 5 "- [x]" lines of a done file, for the TODO tab (display only).
+export const prevDayBlock = (date: string, fileText: string, path: string) => {
+  const items = fileText.split('\n').filter(l => l.startsWith('- [x]'))
+  if (!items.length) return ''
+  const more = items.length - 5
+  const lines = items.slice(-5)
+  if (more > 0) lines.push(`…ほか ${more} 件（${path}）`)
+  return `\n\n---\n\n#### 前の日（${date}）\n\n${lines.join('\n')}`
+}
+
 const NOW_PANE = 'todo-pane'
 const NOW_TITLE = 'TODO'
 const PIN_PANE = 'pin-board'
@@ -46,15 +90,15 @@ const rule = (f: string) => [
   `${f} は右のペインに表示される TODO リストである。`,
   '- 項目はすべてチェックボックス付きで書く。未完了は `- [ ] `、完了は `- [x] ` で始め、`- ` だけの箇条書きにしない。',
   `- ファイルや Notion を書き換える作業に取りかかるときは、書き換えより先に ${f} の「## 今」にその作業を書く。`,
-  '- 作業が終わったらチェックを付けて「今日やったこと」などの欄へ移し、残っている作業は該当する欄に置く。',
+  `- 作業が終わったらチェックを付けて「${doneHeading(today())}」へ移し、残っている作業は該当する欄に置く。`,
   '- 話題が変わったら、そのつど「## 今」を今の状態に直す。',
 ].join('\n')
 const ask = (f: string, off: string) =>
-  `この作業ディレクトリには ${f}（右のペインに出る TODO リスト）が無い。このターンの最初に、ほかの作業より先に AskUserQuestion で「TODO リストを作るか」をユーザーに聞く。\n- 作る → ${f} を「## 今」「## 今日やったこと」の見出しで作り、今の作業を「## 今」に `- [ ] ` で書く。\n- 作らない → 空のファイル ${off} を作る（このセッションでは以後聞かない）。`
+  `この作業ディレクトリには ${f}（右のペインに出る TODO リスト）が無い。このターンの最初に、ほかの作業より先に AskUserQuestion で「TODO リストを作るか」をユーザーに聞く。\n- 作る → ${f} を「## 今」「${doneHeading(today())}」の見出しで作り、今の作業を「## 今」に `- [ ] ` で書く。\n- 作らない → 空のファイル ${off} を作る（このセッションでは以後聞かない）。`
 // Sent every turn too, even after a "no" to the todo list: the pin board is independent of it.
 const pinRule = (f: string) =>
   `「ピン留めして」と頼まれたら、対象（直前の説明・比較表・まとめなど）を右のペインのピン留めタブ用ファイル ${f} に Markdown で書く（無ければ作る）。claude.ai の Artifact のピン留めではない。ピン留めは頼まれたときだけ書き、作業のたびには更新しない。`
-const EMPTY_BOARD = '## 今\n\n## 今日やったこと\n'
+const emptyBoard = () => `## 今\n\n${doneHeading(today())}\n`
 const missedText = (f: string) =>
   `前のターンでファイルか Notion を書き換えたのに、${f} が更新されていない。このターンの最初に ${f} を今の状態に直すこと。`
 
@@ -96,6 +140,36 @@ async function sync($: any) {
   }
 }
 
+// Roll the done section over when the date changed. Runs outside Claude's tool calls and before turn.start
+// snapshots `before`, so it never reads as a missed update.
+// The 3s refresh and prompt.submit can both get here; one run at a time, or a section could be archived twice.
+let archiving: Promise<void> | undefined
+function archiveIfNeeded($: any) {
+  archiving ??= rollOver($).finally(() => { archiving = undefined })
+  return archiving
+}
+async function rollOver($: any) {
+  if (!(await $.fs.exists(p.todo))) return
+  const text = String(await $.fs.read(p.todo))
+  const r = rollover(text, today())
+  if (r.text !== text) await $.fs.write(p.todo, r.text)
+  if (!r.archived) return
+  const file = `${dir}/todo/done/${r.archived.date}.md`
+  await $.process.run(['mkdir', '-p', `${dir}/todo/done`])
+  const existing = await $.fs.read(file).then(String).catch(() => undefined)
+  await $.fs.write(file, appendDone(existing, r.archived.date, base, r.archived.body))
+}
+
+// Most recent earlier day's finished items, shown under the TODO tab only.
+async function prevDay($: any) {
+  const names: { name: string }[] = await $.fs.list(`${dir}/todo/done`).catch(() => [])
+  const t = today()
+  const last = names.map(n => n.name).filter(n => /^\d{4}-\d{2}-\d{2}\.md$/.test(n) && n.slice(0, 10) < t).sort().pop()
+  if (!last) return ''
+  const path = `${dir}/todo/done/${last}`
+  return prevDayBlock(last.slice(0, 10), String(await $.fs.read(path).catch(() => '')), path)
+}
+
 export const register: Register = (on, options) => {
   dir = dirFrom(options)
   p = pathsFor(dir, base)
@@ -106,7 +180,9 @@ export const register: Register = (on, options) => {
     await $.command.register({ name: 'pin', description: 'Show the pin board in a side pane' })
     const refresh = async () => {
       await sync($).catch(() => {})
-      const now = String(await $.fs.read(p.todo).catch(() => '')).slice(0, 9000)
+      await archiveIfNeeded($).catch(() => {})
+      const file = String(await $.fs.read(p.todo).catch(() => '')).slice(0, 9000)
+      const now = file ? file + (await prevDay($)) : file
       const pin = String(await $.fs.read(p.pin).catch(() => '')).slice(0, 9000)
       await update($, nowText, prev => (prev === now ? prev : now))
       await update($, pinText, prev => (prev === pin ? prev : pin))
@@ -126,6 +202,7 @@ export const register: Register = (on, options) => {
   // so the instruction reflects the board's state at that turn; prompt.compose is frozen after the first turn.
   on('prompt.submit', async ($, e, next) => {
     await sync($).catch(() => {})
+    await archiveIfNeeded($).catch(() => {})
     const pin = pinRule(p.pin)
     if (await $.fs.exists(p.off)) return next({ ...e, context: [...(e.context ?? []), pin] })
     const text = (await $.fs.exists(p.todo)) ? (missed ? `${rule(p.todo)}\n${missedText(p.todo)}` : rule(p.todo)) : ask(p.todo, p.off)
@@ -165,11 +242,11 @@ export const register: Register = (on, options) => {
     if (!(await $.fs.exists(p.todo))) {
       // $.fs has no mkdir or remove, so those go through the shell tools.
       await $.process.run(['mkdir', '-p', `${dir}/todo`]).catch(() => {})
-      await $.fs.write(p.todo, EMPTY_BOARD)
+      await $.fs.write(p.todo, emptyBoard())
       created = true
     }
     if (await $.fs.exists(p.off)) await $.process.run(['rm', '-f', p.off]).catch(() => {})
-    if (created) await update($, nowText, () => EMPTY_BOARD)
+    if (created) await update($, nowText, () => emptyBoard())
     await $.ui.open({ id: NOW_PANE, title: NOW_TITLE, focus: true })
     return { text: created ? `Created ${p.todo} and opened.` : 'Opened.' }
   })
