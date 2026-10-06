@@ -1,105 +1,107 @@
 # todo-pane
 
-Claudeが今やっている作業のタスクリストを、会話の横に表示しておくplugin。
+[日本語](README.ja.md)
 
-Claude Codeで長く作業していると、途中で寄り道や確認をはさむうちに「今なにをやっていて、何が残っているのか」が分からなくなる。todo-paneを入れると、Claudeは作業に取りかかるたびにタスクリストに書き、終わったらチェックを付けて「やったこと（日付）」へ移す。そのため、右のペインを見れば、今の作業と残りの作業がいつでも分かる。
+A plugin that keeps Claude's current task list in a pane next to the conversation.
 
-![左にClaude Codeの会話、右に「TODO」と「ピン留め」のタブを持つペイン](screenshot.png)
+During a long session in Claude Code, side trips and confirmations make it easy to lose track of what is being done now and what is left. With todo-pane installed, Claude writes each piece of work to the task list before starting it, and when it finishes, checks it off and moves it under "Done (date)". Look at the right-hand pane at any time to see the current work and what remains.
 
-ペインには2つのタブがある。
+![Claude Code conversation on the left, a pane with "TODO" and "Pins" tabs on the right](screenshot.png)
 
-- **TODO**: 作業の進み具合。今やっていること、残っていること、終わったことをClaudeが書き、作業のたびに更新する。確認待ちやあとで確かめることも、作業の一部としてここに入れる。
-- **ピン留め**: 作業中に見返したい参考資料。整理してもらった説明、比較表、決めたことのまとめなどを置く。Claudeは「ピン留めして」と頼まれたときだけ書き、作業のたびには更新しない。
+The pane has two tabs.
 
-ピン留めは、たとえば次のように使う。
+- TODO shows progress. Claude writes what it is doing now, what remains and what is done, and updates it as the work goes on. Things you are waiting to confirm or want to check later go here too, as part of the work.
+- Pins (「ピン留め」 in Japanese) holds reference material you want to look back at while working: an explanation Claude gave, a comparison table, a summary of what you decided. Claude writes to it only when asked to pin something, and does not update it as work progresses.
 
-- 仕組みや手順をClaudeに説明してもらったら、その答えを「ピン留めして」と頼む。答えが会話の中を流れていかないので、作業しながら横で見返せる。
-- 調べてもらった結果（URL、コマンド、設定値など）を「ピン留めして」と頼む。同じことを聞き直さずに、必要なときにペインで確かめられる。
+Some ways to use pins:
 
-2つのタブとも、中身はただのMarkdownファイルで、セッションごとに別のファイルになる。Claudeがファイルを書き換えると、ペインの表示もすぐ変わる。
+- Ask Claude to explain how something works or walk through a procedure, then ask it to pin the answer. The answer stays beside the conversation instead of scrolling away.
+- Ask Claude to pin research results such as URLs, commands and setting values. You can check them in the pane when needed instead of asking again.
 
-ペインの表示やClaudeへの指示は、pluginの中のmod（Claude Codeの中で動く関数フック）で行っている。modはClaude Code 2.1.287で入った仕組みなので、2.1.287以上が必要。
+Both tabs are plain Markdown files, one file per session. When Claude rewrites a file, the pane updates right away.
 
-## インストール
+The pane and the instructions to Claude are implemented by a mod (a function hook that runs inside Claude Code) in the plugin. Mods arrived in Claude Code 2.1.287, so 2.1.287 or later is required.
+
+## Install
 
 ```
 /plugin marketplace add aromarious/claude-code-plugins
 /plugin install todo-pane@aromarious
 ```
 
-インストールの直後に「Configure todo-pane」という設定画面が出る。何も入れずにスキップすれば、初期値の `.claude` の下にファイルが作られる。
+Right after installing, a "Configure todo-pane" screen appears. Skip it without entering anything and the files are created under the default `.claude`.
 
-## TODOペインが見えないとき
+## When the TODO pane is not visible
 
-Claude Code本体の差分ペイン（gitの変更を表示するペイン）が開いていると、TODOペインはその後ろに隠れる。`/todo`を実行しても前には出てこない。右側に変更ファイルの一覧や「Diff unavailable」が出ていたら、それは差分ペインなので、`/diff`を実行するか右上の✕で閉じる。
+If Claude Code's own diff pane (the pane that shows git changes) is open, the TODO pane is hidden behind it, and running `/todo` does not bring it forward. If the right side shows a list of changed files or "Diff unavailable", that is the diff pane. Run `/diff` or click the ✕ at its top right to close it.
 
-差分ペインは、gitリポジトリの中で画面の幅が広いと自動で開くことがある。一度`/diff`か✕で閉じると、その状態が`~/.claude.json`の`diffSidebarOpen`に保存され、以後は自動では開かない。
+The diff pane can open by itself in a git repository when the screen is wide. Once you close it with `/diff` or ✕, that state is saved as `diffSidebarOpen` in `~/.claude.json` and it no longer opens automatically.
 
-## 構成要素
+## Components
 
-| 要素 | 使っているか | ファイル | 役割 |
+| Component | Used | Files | Role |
 |---|---|---|---|
-| 関数のhook（mod） | 使う | `hooks/hooks.json`の`modules`、`hooks/register.tsx` | ペインの表示、発言ごとのClaudeへの指示、更新し忘れの検知、`/todo`・`/pin`コマンド |
-| 設定項目（`userConfig`） | 使う | `.claude-plugin/plugin.json` | ファイルを置くディレクトリ`dir`を変えられるようにする（[設定](#設定)） |
-| コマンド | 使う | `hooks/register.tsx` | `/todo`・`/pin`。コマンドファイルではなく、modが起動時に登録する |
-| シェルコマンドのhook | 使わない | — | — |
-| skill・コマンドファイル・agent・MCPサーバー | 使わない | — | — |
+| Function hook (mod) | Yes | `modules` in `hooks/hooks.json`, `hooks/register.tsx` | Draws the panes, adds instructions for Claude on every prompt, detects a missed update, provides the `/todo` and `/pin` commands |
+| Setting (`userConfig`) | Yes | `.claude-plugin/plugin.json` | Lets you change the directory `dir` where files are kept ([Settings](#settings)) |
+| Commands | Yes | `hooks/register.tsx` | `/todo` and `/pin`. Not command files; the mod registers them at startup |
+| Shell command hook | No | — | — |
+| Skills, command files, agents, MCP servers | No | — | — |
 
-Claude Codeのhookには2種類ある。イベントが起きたときにシェルコマンドを実行するhookと、Claude Codeの中で関数を実行するhook（mod）だ。todo-paneは関数のhookだけを使う。`hooks/hooks.json`には、関数のhookを書いたモジュール（`register.tsx`）を読み込ませる指定だけが入っている。
+Claude Code has two kinds of hooks: hooks that run a shell command when an event occurs, and hooks that run a function inside Claude Code (mods). todo-pane uses function hooks only. `hooks/hooks.json` just tells Claude Code to load the module that holds them (`register.tsx`).
 
-modが関数を登録しているイベントは次のとおり。
+The mod registers functions for these events.
 
-| イベント | していること |
+| Event | What it does |
 |---|---|
-| `session.start` | `/todo`・`/pin`を登録し、ペインを開き、3秒ごとのファイルの読み直しを始める |
-| `prompt.submit` | 発言のたびに、その時点の状態に合わせた指示をClaude向けに添える |
-| `turn.start` | ターンの始まりにtodoファイルの中身を控えておく |
-| `tool.call` | ファイルやNotionを書き換えるツールが呼ばれたかを記録する |
-| `turn.complete` | 書き換えがあったのにtodoファイルが変わっていなければ、通知とステータス表示を出す |
-| `command.run` | `/todo`・`/pin`を実行したときに、ペインを開いて前に出す。`/todo`はtodoファイルが無ければ作る |
-| `ui.render` | ペインの中身（todoファイル・pinファイルのMarkdown）を描く |
+| `session.start` | Detects the display language, registers `/todo` and `/pin`, opens the panes, and starts re-reading the files every 3 seconds |
+| `prompt.submit` | On every prompt, attaches instructions for Claude that match the current state |
+| `turn.start` | Remembers the contents of the todo file at the start of the turn |
+| `tool.call` | Records whether a tool that changes files or Notion was called |
+| `turn.complete` | If something was changed but the todo file was not, shows a notice and a status line |
+| `command.run` | On `/todo` or `/pin`, opens the pane and brings it forward. `/todo` also creates the todo file if it is missing |
+| `ui.render` | Draws the pane contents (the Markdown of the todo file and the pin file) |
 
-### 外部コマンド
+### External commands
 
-modの中から、次のコマンドを実行している。いずれもmacOSとLinuxには標準で入っている。Windowsでは試していない。
+The mod runs the following commands. All of them come with macOS and Linux. Windows has not been tested.
 
-| コマンド | 使い道 |
+| Command | Purpose |
 |---|---|
-| `sh`・`ls`・`tail` | セッションのtranscript（JSONL）の末尾500行を読み、セッション名を取る（3秒ごと） |
-| `rm` | セッション名が変わってファイルを付け直したとき、古い名前のファイルを消す |
+| `sh`, `ls`, `tail` | Read the last 500 lines of the session transcript (JSONL) to get the session name (every 3 seconds) |
+| `rm` | Delete the old-name files when the session name changes and the files are renamed |
 
-## 表示するファイル
+## Files shown
 
-ファイルは、セッションを始めたディレクトリから見た`.claude/`の下に、セッションごとに1つずつ置く。
+One file of each kind is kept per session, under `.claude/` relative to the directory where the session was started.
 
-| ファイル | ペインの名前 | 開くタイミング |
+| File | Pane name | When it opens |
 |---|---|---|
-| `.claude/todo/<名前>.md` | TODO | セッション開始時に必ず開く |
-| `.claude/pin/<名前>.md` | ピン留め | ファイルがあればセッション開始時に開く |
-| `.claude/todo/done/<日付>.md` | （ペインなし。TODOタブの下に直近の分を表示） | 日付が変わったときに前日の「やったこと」を移す先 |
-| `.claude/todo/<名前>.off` | （ペインなし） | このセッションで「作らない」と答えた記録 |
+| `.claude/todo/<name>.md` | TODO | Always opens at session start |
+| `.claude/pin/<name>.md` | Pins | Opens at session start if the file exists |
+| `.claude/todo/done/<date>.md` | (no pane; the latest one is shown under the TODO tab) | Where the previous day's done items are moved when the date changes |
+| `.claude/todo/<name>.off` | (no pane) | Records that you answered "don't create" in this session |
 
-`<名前>`は、セッション名があれば`<セッション名>-<セッションIDの先頭6文字>`、なければ`<セッションIDの先頭8文字>`になる。セッション名に含まれる`/` `\` `:`と制御文字は`_`に置き換える。絵文字や日本語はそのまま使う。
+`<name>` is `<session name>-<first 6 characters of the session ID>` when the session has a name, and the first 8 characters of the session ID otherwise. `/`, `\`, `:` and control characters in the session name are replaced with `_`. Emoji and Japanese are kept as they are.
 
-ペインは3秒ごとにファイルを読み直す。閉じたペインは`/todo`か`/pin`で開き直せる。
+The pane re-reads the files every 3 seconds. A closed pane can be reopened with `/todo` or `/pin`.
 
-セッション名は、そのセッションのtranscript（JSONL）にある最新の`custom-title`行から取る。セッション名が途中で変わったときは、3秒ごとの読み直しのついでに`<名前>`を計算し直し、todo・pin・offの既存ファイルを新しい名前へ移す。
+The session name comes from the latest `custom-title` line in the session transcript (JSONL). When the name changes mid-session, `<name>` is recomputed during the 3-second re-read, and the existing todo, pin and off files are moved to the new name.
 
-## 日付が変わったとき
+## When the date changes
 
-todoファイルの「## やったこと（YYYY-MM-DD）」の日付は、その日の日付（ローカル時間）になっている。日付が変わると、次の発言かペインの読み直しのときに、前の日の「やったこと」の中身を`<dir>/todo/done/<日付>.md`へ移し、todoファイルの見出しを今日の日付に付け替える。移した先では「## セッション <名前>」の見出しの下に置く。ファイルは日付ごとに1つで、同じディレクトリのセッションが共有する。以前の「## 今日やったこと」の見出しは、日付付きの見出しに読み替える。
+The date in the todo file's "## Done (YYYY-MM-DD)" heading (in Japanese, "## やったこと（YYYY-MM-DD）") is today's date in local time. When the date changes, at the next prompt or pane re-read, the contents of the previous day's done section are moved to `<dir>/todo/done/<date>.md` and the todo file's heading is changed to today's date. In the destination file they go under a "## Session <name>" heading. There is one file per date, shared by the sessions in the same directory. The older "## 今日やったこと" heading is read as the dated heading. A heading in either language is accepted, and the heading written afterwards is in the current language.
 
-TODOタブでは、todoファイルの下に区切り線を引き、いちばん最近の前の日の完了項目を最後の5件まで表示する。5件より多いときは「…ほか N 件」と、元のファイルの場所を添える。この表示は画面だけで、todoファイルには書かない。
+Under the TODO tab, a divider follows the todo file, then the completed items of the most recent earlier day, up to the last 5. If there are more than 5, a line "…and N more" with the location of the source file is added. This is display only; it is not written to the todo file.
 
-## 設定
+## Settings
 
-変えられるのは次の1つ。作業ディレクトリからの相対パスで、絶対パスも書ける。変えた設定は次のセッションから反映される。
+One setting can be changed. It is a path relative to the working directory; an absolute path also works. A changed setting takes effect from the next session.
 
-| 設定 | 初期値 | 内容 |
+| Setting | Default | Meaning |
 |---|---|---|
-| `dir` | `.claude` | `todo/`と`pin/`を置くディレクトリ |
+| `dir` | `.claude` | Directory that holds `todo/` and `pin/` |
 
-値は`~/.claude/settings.json`の`pluginConfigs`に書く。キーは、marketplaceから入れた場合は`todo-pane@aromarious`、`--plugin-dir`で読み込んでいる場合は`todo-pane`か`todo-pane@inline`にする。
+Write the value in `pluginConfigs` in `~/.claude/settings.json`. The key is `todo-pane@aromarious` when installed from the marketplace, and `todo-pane` or `todo-pane@inline` when loaded with `--plugin-dir`.
 
 ```json
 {
@@ -111,28 +113,48 @@ TODOタブでは、todoファイルの下に区切り線を引き、いちばん
 }
 ```
 
-この例では、ファイルは`out/todo/<名前>.md`、`out/pin/<名前>.md`、`out/todo/<名前>.off`になる。
+With this example, the files are `out/todo/<name>.md`, `out/pin/<name>.md` and `out/todo/<name>.off`.
 
-## Claudeへの指示
+## Instructions to Claude
 
-ユーザーが発言を送るたびに、その発言の後ろへ次の指示を添えてClaudeに渡す。指示は画面に出ず、発言の本文も変わらない。発言ごとに作り直すので、todoファイルの有無やセッション名の変更を、その時点の状態で反映できる。指示の内容は次のとおり。
+Every time you send a prompt, the following instructions are attached after it and passed to Claude. They are not shown on screen and the prompt text is not changed. They are rebuilt for every prompt, so they reflect the current state, such as whether the todo file exists or whether the session name changed.
 
-- 項目はすべてチェックボックス付きで書く。未完了は`- [ ] `、完了は`- [x] `で始める。
-- ファイルやNotionを書き換える作業に取りかかるときは、書き換えより先に自分のtodoファイルの「## 今」にその作業を書く。
-- 作業が終わったらチェックを付けて「## やったこと（今日の日付）」へ移す。
-- 話題が変わったら「## 今」を今の状態に直す。
+The instructions are written in English. The headings in them follow Claude Code's `language` setting (see [Display language](#display-language)): "## Now" and "## Done (date)" in English, "## 今" and "## やったこと（日付）" when the language is Japanese. The instructions also tell Claude to write the items in the language you are writing in, so talking to Claude in Japanese gives Japanese items. The instructions say:
 
-ピン留めについては、todoファイルの有無や「作らない」と答えたかに関係なく、毎回次の指示を添える。
+- The session's todo file is the TODO list shown in the right-hand pane.
+- Write every item as a checkbox: `- [ ] ` for open, `- [x] ` for done. Never use a plain `- ` bullet.
+- Before starting any work that changes files or Notion, first write it under the "now" heading of the todo file.
+- When the work is done, check it and move it under the "done (today's date)" heading, and keep remaining items in their sections.
+- When the topic changes, update the "now" section to match.
+- Write the items in the language the user is writing in.
 
-- 「ピン留めして」と頼まれたら、対象を自分のpinファイルにMarkdownで書く（無ければ作る）。頼まれたときだけ書き、作業のたびには更新しない。
+For pins, the following instruction is attached every time, whether or not the todo file exists and whether or not you answered "don't create".
 
-あるターンでファイルやNotionを書き換えたのにtodoファイルが変わっていなければ、通知とステータス表示で知らせ、次のターンで直すようClaudeに指示する。サブエージェントの書き換えは数えない。
+- When asked to pin something ("pin that", 「ピン留めして」), write the target (the explanation, comparison table, summary, etc. just given) as Markdown to the session's pin file, creating it if missing. This is the pin tab of this plugin's side pane, not claude.ai Artifact pinning. Write only when asked; do not update it as work progresses.
 
-## todoファイルが無いとき
+If a turn changed files or Notion but the todo file did not change, a notice and a status line tell you, and Claude is told to bring the todo file up to date at the start of the next turn. Changes made by subagents are not counted.
 
-自分のtodoファイルが無いセッションでは、最初のターンでClaudeが「作るか」を尋ねる。この質問はセッションごとに出る。
+## Display language
 
-- 作ると答えた場合は、「## 今」「## やったこと（今日の日付）」の見出しで自分のtodoファイルを作る。
-- 作らないと答えた場合は、空のファイル`<dir>/todo/<名前>.off`を作る。このセッションでは以後は尋ねない。
+Tab titles, todo-file headings, empty-pane placeholders, the previous-day block and notices follow Claude Code's `language` setting. If `language` is Japanese (`Japanese`, `ja`, `日本語` and the like), they are in Japanese; otherwise they are in English. The check runs once, at session start.
 
-どちらの場合も、`/todo`を実行すると、「## 今」「## やったこと（今日の日付）」の見出しだけのtodoファイルを作ってペインに出す。`.off`があれば消すので、「作らない」と答えたあとでも`/todo`で使い始められる。
+| Item | Japanese | English |
+|---|---|---|
+| Now heading | `## 今` | `## Now` |
+| Done heading | `## やったこと（date）` | `## Done (date)` |
+| Pin tab title | ピン留め | Pins |
+| Previous-day heading | `#### 前の日（date）` | `#### Previous day (date)` |
+| Done file title | `# date にやったこと` | `# Done on date` |
+| Done file session heading | `## セッション <name>` | `## Session <name>` |
+| Missed-update notice | `<file> が更新されていません` | `<file> was not updated` |
+
+The date rollover described above accepts the heading of either language. A newly written heading uses the current language.
+
+## When there is no todo file
+
+In a session that has no todo file of its own, Claude asks in the first turn whether to create one. The question is asked once per session.
+
+- If you say yes, Claude creates the session's todo file with the "now" and "done (today's date)" headings (in the language from the table above).
+- If you say no, Claude creates an empty file `<dir>/todo/<name>.off` and does not ask again in this session.
+
+In either case, running `/todo` creates a todo file containing only the "## Now" and "## Done (today's date)" headings (Japanese equivalents when the language is Japanese) and shows it in the pane. It also deletes the `.off` file, so you can start using it with `/todo` even after answering "don't create".

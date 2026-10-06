@@ -38,17 +38,56 @@ export const today = () => {
   const z = (n: number) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}`
 }
-const doneHeading = (date: string) => `## やったこと（${date}）`
-const DONE_RE = /^## やったこと（(\d{4}-\d{2}-\d{2})）\s*$/
+
+// Fixed strings the person sees (headings, tab titles, placeholders, toasts). Prompts to Claude stay English.
+export type Lang = 'ja' | 'en'
+export const L = {
+  ja: {
+    now: '## 今',
+    done: (d: string) => `## やったこと（${d}）`,
+    todoTitle: 'TODO',
+    pinTitle: 'ピン留め',
+    emptyTodo: '（TODO はまだありません）',
+    emptyPin: '（ピン留めはまだありません）',
+    prevDay: (d: string) => `#### 前の日（${d}）`,
+    more: (n: number, path: string) => `…ほか ${n} 件（${path}）`,
+    doneTitle: (d: string) => `# ${d} にやったこと`,
+    session: (label: string) => `## セッション ${label}`,
+    missedToast: (f: string) => `${f} が更新されていません`,
+    missedStatus: (f: string) => `${f} 未更新`,
+  },
+  en: {
+    now: '## Now',
+    done: (d: string) => `## Done (${d})`,
+    todoTitle: 'TODO',
+    pinTitle: 'Pins',
+    emptyTodo: '(No TODO yet)',
+    emptyPin: '(Nothing pinned yet)',
+    prevDay: (d: string) => `#### Previous day (${d})`,
+    more: (n: number, path: string) => `…and ${n} more (${path})`,
+    doneTitle: (d: string) => `# Done on ${d}`,
+    session: (label: string) => `## Session ${label}`,
+    missedToast: (f: string) => `${f} was not updated`,
+    missedStatus: (f: string) => `${f} not updated`,
+  },
+}
+// Japanese when Claude Code's `language` setting says so, otherwise English.
+export const langFrom = (language: unknown): Lang => (/^(ja|japanese|日本語)/i.test(String(language ?? '')) ? 'ja' : 'en')
+// Set once in session.start; English until then.
+let lang: Lang = 'en'
+let langRead = false
+
+// Either language's dated heading, and the legacy one.
+const DONE_RE = /^## (?:やったこと（|Done \()(\d{4}-\d{2}-\d{2})[）)]\s*$/
 const LEGACY_RE = /^## 今日やったこと\s*$/
 
-// Date changed: move the old "やったこと" section out of the todo text. Pure; the caller does the I/O.
-export const rollover = (text: string, today: string): { text: string; archived?: { date: string; body: string } } => {
+// Date changed: move the old done section (either language) out of the todo text. Pure; the caller does the I/O.
+export const rollover = (text: string, today: string, lang: Lang): { text: string; archived?: { date: string; body: string } } => {
   const lines = text.split('\n')
   const i = lines.findIndex(l => DONE_RE.test(l) || LEGACY_RE.test(l))
   if (i < 0) return { text }
   if (LEGACY_RE.test(lines[i])) {
-    lines[i] = doneHeading(today)
+    lines[i] = L[lang].done(today)
     return { text: lines.join('\n') }
   }
   const date = lines[i].match(DONE_RE)![1]
@@ -56,51 +95,50 @@ export const rollover = (text: string, today: string): { text: string; archived?
   let j = i + 1
   while (j < lines.length && !lines[j].startsWith('## ')) j++
   const body = lines.slice(i + 1, j).join('\n').trim()
-  const out = [...lines.slice(0, i), doneHeading(today), '', ...lines.slice(j)].join('\n')
+  const out = [...lines.slice(0, i), L[lang].done(today), '', ...lines.slice(j)].join('\n')
   return body ? { text: out, archived: { date, body } } : { text: out }
 }
 
 // New content for <dir>/todo/done/<date>.md with this session's section appended.
-export const appendDone = (existing: string | undefined, date: string, sessionLabel: string, body: string) => {
-  const head = existing ? existing.replace(/\s+$/, '') + '\n\n' : `# ${date} にやったこと\n\n`
-  return `${head}## セッション ${sessionLabel}\n\n${body}\n`
+export const appendDone = (existing: string | undefined, date: string, sessionLabel: string, body: string, lang: Lang) => {
+  const head = existing ? existing.replace(/\s+$/, '') + '\n\n' : `${L[lang].doneTitle(date)}\n\n`
+  return `${head}${L[lang].session(sessionLabel)}\n\n${body}\n`
 }
 
 // Last 5 "- [x]" lines of a done file, for the TODO tab (display only).
-export const prevDayBlock = (date: string, fileText: string, path: string) => {
+export const prevDayBlock = (date: string, fileText: string, path: string, lang: Lang) => {
   const items = fileText.split('\n').filter(l => l.startsWith('- [x]'))
   if (!items.length) return ''
   const more = items.length - 5
   const lines = items.slice(-5)
-  if (more > 0) lines.push(`…ほか ${more} 件（${path}）`)
-  return `\n\n---\n\n#### 前の日（${date}）\n\n${lines.join('\n')}`
+  if (more > 0) lines.push(L[lang].more(more, path))
+  return `\n\n---\n\n${L[lang].prevDay(date)}\n\n${lines.join('\n')}`
 }
 
 const NOW_PANE = 'todo-pane'
-const NOW_TITLE = 'TODO'
 const PIN_PANE = 'pin-board'
-const PIN_TITLE = 'ピン留め'
 
 // The engine's scan needs each atom named directly where read/update use it, so the two boards are spelled out.
 const nowText = atom({ plugin: 'todo-pane', key: 'text' } as const, '')
 const pinText = atom({ plugin: 'todo-pane', key: 'pin' } as const, '')
 
 // Sent to the model every turn, so the board stays current without relying on memory.
-const rule = (f: string) => [
-  `${f} は右のペインに表示される TODO リストである。`,
-  '- 項目はすべてチェックボックス付きで書く。未完了は `- [ ] `、完了は `- [x] ` で始め、`- ` だけの箇条書きにしない。',
-  `- ファイルや Notion を書き換える作業に取りかかるときは、書き換えより先に ${f} の「## 今」にその作業を書く。`,
-  `- 作業が終わったらチェックを付けて「${doneHeading(today())}」へ移し、残っている作業は該当する欄に置く。`,
-  '- 話題が変わったら、そのつど「## 今」を今の状態に直す。',
+const rule = (f: string, lang: Lang) => [
+  `${f} is the TODO list shown in the right-hand pane.`,
+  '- Write every item as a checkbox: `- [ ] ` for open, `- [x] ` for done. Never use a plain `- ` bullet.',
+  `- Before starting any work that changes files or Notion, first write it under "${L[lang].now}" in ${f}.`,
+  `- When the work is done, check it and move it under "${L[lang].done(today())}"; keep remaining items in their sections.`,
+  `- When the topic changes, update the "${L[lang].now}" section to match.`,
+  '- Write the items in the language the user is writing in.',
 ].join('\n')
-const ask = (f: string, off: string) =>
-  `この作業ディレクトリには ${f}（右のペインに出る TODO リスト）が無い。このターンの最初に、ほかの作業より先に AskUserQuestion で「TODO リストを作るか」をユーザーに聞く。\n- 作る → ${f} を「## 今」「${doneHeading(today())}」の見出しで作り、今の作業を「## 今」に `- [ ] ` で書く。\n- 作らない → 空のファイル ${off} を作る（このセッションでは以後聞かない）。`
+const ask = (f: string, off: string, lang: Lang) =>
+  `The TODO file ${f} (the TODO list shown in the right-hand pane) does not exist. At the very start of this turn, before anything else, ask the user with AskUserQuestion whether to create a TODO list.\n- Yes: create ${f} with the headings "${L[lang].now}" and "${L[lang].done(today())}", and write the current task under "${L[lang].now}" as \`- [ ] \`.\n- No: create an empty file at ${off} (do not ask again this session).`
 // Sent every turn too, even after a "no" to the todo list: the pin board is independent of it.
-const pinRule = (f: string) =>
-  `「ピン留めして」と頼まれたら、対象（直前の説明・比較表・まとめなど）を右のペインのピン留めタブ用ファイル ${f} に Markdown で書く（無ければ作る）。claude.ai の Artifact のピン留めではない。ピン留めは頼まれたときだけ書き、作業のたびには更新しない。`
-const emptyBoard = () => `## 今\n\n${doneHeading(today())}\n`
+const pinRule = (f: string, lang: Lang) =>
+  `When asked to "pin" something (e.g. "pin that", 「ピン留めして」), write the target (the explanation, comparison table, summary, etc. you just gave) as Markdown to ${f}, creating it if missing. This is the "${L[lang].pinTitle}" tab of this plugin's side pane, not claude.ai Artifact pinning. Only write it when asked; do not update it as work progresses.`
+const emptyBoard = (lang: Lang) => `${L[lang].now}\n\n${L[lang].done(today())}\n`
 const missedText = (f: string) =>
-  `前のターンでファイルか Notion を書き換えたのに、${f} が更新されていない。このターンの最初に ${f} を今の状態に直すこと。`
+  `In the previous turn files or Notion were changed, but ${f} was not updated. At the start of this turn, update ${f} to the current state.`
 
 // Tools that change something the person would expect the board to mention.
 export const isWrite = (tool: string, path: string, now: string, off: string) =>
@@ -126,6 +164,12 @@ async function titleOf($: any, id: string) {
 
 // Recompute <base>; if it changed, carry the old files (todo, pin and off) to the new names.
 async function sync($: any) {
+  // Claude Code's `language` setting picks the fixed strings (settings can fail to read: English).
+  // Read here, not only in session.start, so a hot reload that skips session.start still gets it.
+  if (!langRead) {
+    lang = langFrom((await $.settings.read().catch(() => undefined))?.language)
+    langRead = true
+  }
   if (!sessionId) sessionId = await $.session.id()
   const next = baseName(await titleOf($, sessionId), sessionId)
   if (next === base) return
@@ -151,13 +195,13 @@ function archiveIfNeeded($: any) {
 async function rollOver($: any) {
   if (!(await $.fs.exists(p.todo))) return
   const text = String(await $.fs.read(p.todo))
-  const r = rollover(text, today())
+  const r = rollover(text, today(), lang)
   if (r.text !== text) await $.fs.write(p.todo, r.text)
   if (!r.archived) return
   const file = `${dir}/todo/done/${r.archived.date}.md`
   await $.process.run(['mkdir', '-p', `${dir}/todo/done`])
   const existing = await $.fs.read(file).then(String).catch(() => undefined)
-  await $.fs.write(file, appendDone(existing, r.archived.date, base, r.archived.body))
+  await $.fs.write(file, appendDone(existing, r.archived.date, base, r.archived.body, lang))
 }
 
 // Most recent earlier day's finished items, shown under the TODO tab only.
@@ -167,7 +211,7 @@ async function prevDay($: any) {
   const last = names.map(n => n.name).filter(n => /^\d{4}-\d{2}-\d{2}\.md$/.test(n) && n.slice(0, 10) < t).sort().pop()
   if (!last) return ''
   const path = `${dir}/todo/done/${last}`
-  return prevDayBlock(last.slice(0, 10), String(await $.fs.read(path).catch(() => '')), path)
+  return prevDayBlock(last.slice(0, 10), String(await $.fs.read(path).catch(() => '')), path, lang)
 }
 
 export const register: Register = (on, options) => {
@@ -191,9 +235,9 @@ export const register: Register = (on, options) => {
     const pin = await refresh()
     // ponytail: polls every 3s; a file watch would be nicer if the API grows one
     $.clock.every(3000, () => void refresh())
-    void $.ui.open({ id: NOW_PANE, title: NOW_TITLE })
+    void $.ui.open({ id: NOW_PANE, title: L[lang].todoTitle })
     // The pin board opens at start only when this session's file exists; /pin opens it later.
-    if (pin) void $.ui.open({ id: PIN_PANE, title: PIN_TITLE })
+    if (pin) void $.ui.open({ id: PIN_PANE, title: L[lang].pinTitle })
 
     return next(e)
   })
@@ -203,9 +247,9 @@ export const register: Register = (on, options) => {
   on('prompt.submit', async ($, e, next) => {
     await sync($).catch(() => {})
     await archiveIfNeeded($).catch(() => {})
-    const pin = pinRule(p.pin)
+    const pin = pinRule(p.pin, lang)
     if (await $.fs.exists(p.off)) return next({ ...e, context: [...(e.context ?? []), pin] })
-    const text = (await $.fs.exists(p.todo)) ? (missed ? `${rule(p.todo)}\n${missedText(p.todo)}` : rule(p.todo)) : ask(p.todo, p.off)
+    const text = (await $.fs.exists(p.todo)) ? (missed ? `${rule(p.todo, lang)}\n${missedText(p.todo)}` : rule(p.todo, lang)) : ask(p.todo, p.off, lang)
     return next({ ...e, context: [...(e.context ?? []), text, pin] })
   })
 
@@ -227,8 +271,8 @@ export const register: Register = (on, options) => {
     if (!e.agentId && !e.isAborted && before !== undefined) {
       const after = await $.fs.read(p.todo).then(String).catch(() => undefined)
       missed = wrote && after === before
-      if (missed) $.ui.toast(`${p.todo} が更新されていません`)
-      $.ui.status(missed ? `${p.todo} 未更新` : undefined)
+      if (missed) $.ui.toast(L[lang].missedToast(p.todo))
+      $.ui.status(missed ? L[lang].missedStatus(p.todo) : undefined)
     }
     return next(e)
   })
@@ -242,17 +286,17 @@ export const register: Register = (on, options) => {
     if (!(await $.fs.exists(p.todo))) {
       // $.fs has no mkdir or remove, so those go through the shell tools.
       await $.process.run(['mkdir', '-p', `${dir}/todo`]).catch(() => {})
-      await $.fs.write(p.todo, emptyBoard())
+      await $.fs.write(p.todo, emptyBoard(lang))
       created = true
     }
     if (await $.fs.exists(p.off)) await $.process.run(['rm', '-f', p.off]).catch(() => {})
-    if (created) await update($, nowText, () => emptyBoard())
-    await $.ui.open({ id: NOW_PANE, title: NOW_TITLE, focus: true })
+    if (created) await update($, nowText, () => emptyBoard(lang))
+    await $.ui.open({ id: NOW_PANE, title: L[lang].todoTitle, focus: true })
     return { text: created ? `Created ${p.todo} and opened.` : 'Opened.' }
   })
 
   on('command.run', { command: 'pin' }, async $ => {
-    await $.ui.open({ id: PIN_PANE, title: PIN_TITLE, focus: true })
+    await $.ui.open({ id: PIN_PANE, title: L[lang].pinTitle, focus: true })
     return { text: 'Opened.' }
   })
 
@@ -261,7 +305,7 @@ export const register: Register = (on, options) => {
     const body = await read($, nowText)
     return (
       <Box flexDirection="column">
-        <Markdown text={body || `（TODO はまだありません）`} />
+        <Markdown text={body || L[lang].emptyTodo} />
       </Box>
     )
   })
@@ -271,7 +315,7 @@ export const register: Register = (on, options) => {
     const body = await read($, pinText)
     return (
       <Box flexDirection="column">
-        <Markdown text={body || `（ピン留めはまだありません）`} />
+        <Markdown text={body || L[lang].emptyPin} />
       </Box>
     )
   })
