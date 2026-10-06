@@ -155,6 +155,8 @@ export const register: Register = (on, options) => {
   // focus raises the tab: with both panes open, re-opening an open id alone only retitles it.
   // /todo is an explicit yes: create the board if missing and drop an earlier "no" (.off).
   on('command.run', { command: 'todo' }, async $ => {
+    // Pick up a name set by -n / /rename first, or the file is created under the bare id and renamed 3s later.
+    await sync($).catch(() => {})
     let created = false
     if (!(await $.fs.exists(p.todo))) {
       // $.fs has no mkdir or remove, so those go through the shell tools.
