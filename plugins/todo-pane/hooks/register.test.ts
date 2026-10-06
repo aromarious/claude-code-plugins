@@ -47,7 +47,7 @@ const contextWith = async ($: any, on: any, files: string[], title = 'foo') => {
 
 test('submit: own board present gives the rule', async ($, on) => {
   const [s] = await contextWith($, on, ['.claude/todo/foo-012345.md'])
-  expect(s).toMatch(/TODO リスト/)
+  expect(s).toMatch(/TODO list/)
   expect(s).not.toMatch(/AskUserQuestion/)
 })
 
