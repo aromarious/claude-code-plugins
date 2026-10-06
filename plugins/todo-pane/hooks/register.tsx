@@ -51,6 +51,9 @@ const rule = (f: string) => [
 ].join('\n')
 const ask = (f: string, off: string) =>
   `この作業ディレクトリには ${f}（右のペインに出る TODO リスト）が無い。このターンの最初に、ほかの作業より先に AskUserQuestion で「TODO リストを作るか」をユーザーに聞く。\n- 作る → ${f} を「## 今」「## 今日やったこと」の見出しで作り、今の作業を「## 今」に `- [ ] ` で書く。\n- 作らない → 空のファイル ${off} を作る（このセッションでは以後聞かない）。`
+// Sent every turn too, even after a "no" to the todo list: the pin board is independent of it.
+const pinRule = (f: string) =>
+  `「ピン留めして」と頼まれたら、対象（直前の説明・比較表・まとめなど）を右のペインのピン留めタブ用ファイル ${f} に Markdown で書く（無ければ作る）。claude.ai の Artifact のピン留めではない。ピン留めは頼まれたときだけ書き、作業のたびには更新しない。`
 const EMPTY_BOARD = '## 今\n\n## 今日やったこと\n'
 const missedText = (f: string) =>
   `前のターンでファイルか Notion を書き換えたのに、${f} が更新されていない。このターンの最初に ${f} を今の状態に直すこと。`
@@ -123,9 +126,10 @@ export const register: Register = (on, options) => {
   // so the instruction reflects the board's state at that turn; prompt.compose is frozen after the first turn.
   on('prompt.submit', async ($, e, next) => {
     await sync($).catch(() => {})
-    if (await $.fs.exists(p.off)) return next(e)
+    const pin = pinRule(p.pin)
+    if (await $.fs.exists(p.off)) return next({ ...e, context: [...(e.context ?? []), pin] })
     const text = (await $.fs.exists(p.todo)) ? (missed ? `${rule(p.todo)}\n${missedText(p.todo)}` : rule(p.todo)) : ask(p.todo, p.off)
-    return next({ ...e, context: [...(e.context ?? []), text] })
+    return next({ ...e, context: [...(e.context ?? []), text, pin] })
   })
 
   on('turn.start', async ($, e, next) => {
