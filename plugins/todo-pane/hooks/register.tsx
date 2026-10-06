@@ -51,6 +51,7 @@ const rule = (f: string) => [
 ].join('\n')
 const ask = (f: string, off: string) =>
   `この作業ディレクトリには ${f}（右のペインに出る TODO リスト）が無い。このターンの最初に、ほかの作業より先に AskUserQuestion で「TODO リストを作るか」をユーザーに聞く。\n- 作る → ${f} を「## 今」「## 今日やったこと」の見出しで作り、今の作業を「## 今」に `- [ ] ` で書く。\n- 作らない → 空のファイル ${off} を作る（このセッションでは以後聞かない）。`
+const EMPTY_BOARD = '## 今\n\n## 今日やったこと\n'
 const missedText = (f: string) =>
   `前のターンでファイルか Notion を書き換えたのに、${f} が更新されていない。このターンの最初に ${f} を今の状態に直すこと。`
 
@@ -152,9 +153,19 @@ export const register: Register = (on, options) => {
   })
 
   // focus raises the tab: with both panes open, re-opening an open id alone only retitles it.
+  // /todo is an explicit yes: create the board if missing and drop an earlier "no" (.off).
   on('command.run', { command: 'todo' }, async $ => {
+    let created = false
+    if (!(await $.fs.exists(p.todo))) {
+      // $.fs has no mkdir or remove, so those go through the shell tools.
+      await $.process.run(['mkdir', '-p', `${dir}/todo`]).catch(() => {})
+      await $.fs.write(p.todo, EMPTY_BOARD)
+      created = true
+    }
+    if (await $.fs.exists(p.off)) await $.process.run(['rm', '-f', p.off]).catch(() => {})
+    if (created) await update($, nowText, () => EMPTY_BOARD)
     await $.ui.open({ id: NOW_PANE, title: NOW_TITLE, focus: true })
-    return { text: 'Opened.' }
+    return { text: created ? `Created ${p.todo} and opened.` : 'Opened.' }
   })
 
   on('command.run', { command: 'pin' }, async $ => {
