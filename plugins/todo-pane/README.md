@@ -152,7 +152,7 @@ The table shows the Japanese and English wording as examples.
 | Done file session heading | `## セッション <name>` | `## Session <name>` |
 | Missed-update notice | `<file> が更新されていません` | `<file> was not updated` |
 
-The date rollover described above recognises the done heading in any language: a line that starts with `## ` and ends with the date in parentheses, `(YYYY-MM-DD)` or `（YYYY-MM-DD）`. The "now" heading has no date, so it is never taken for it. A newly written heading uses the current language.
+The date rollover described above recognises the done heading of any supported language (`## Done (YYYY-MM-DD)`, `## やったこと（YYYY-MM-DD）`, `## Erledigt (YYYY-MM-DD)`, and so on). Any other heading is left alone, even one that ends with a date, such as `## Meeting notes (2026-10-01)`. A newly written heading uses the current language.
 
 ## When there is no todo file
 

@@ -219,8 +219,10 @@ export const langFrom = (language: unknown): Lang => {
 let lang: Lang = 'en'
 let langRead = false
 
-// The done heading in any language: "## ..." ending with a parenthesized date. Now-headings carry no date, so they never match.
-const DONE_RE = /^## .*[（(](\d{4}-\d{2}-\d{2})[）)]\s*$/
+// The done heading of any language in L, built from the table so a dated heading of the user's own
+// (e.g. "## Meeting notes (2026-10-01)") is never taken for it.
+const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+const DONE_RE = new RegExp(`^(?:${[...new Set(Object.values(L).map(t => esc(t.done('\u0000')).replace('\u0000', '\\d{4}-\\d{2}-\\d{2}')))].join('|')})\\s*$`)
 const LEGACY_RE = /^## 今日やったこと\s*$/
 
 // Date changed: move the old done section (any language) out of the todo text. Pure; the caller does the I/O.
@@ -232,7 +234,7 @@ export const rollover = (text: string, today: string, lang: Lang): { text: strin
     lines[i] = L[lang].done(today)
     return { text: lines.join('\n') }
   }
-  const date = lines[i].match(DONE_RE)![1]
+  const date = lines[i].match(/\d{4}-\d{2}-\d{2}/)![0]
   if (date >= today) return { text }
   let j = i + 1
   while (j < lines.length && !lines[j].startsWith('## ')) j++
