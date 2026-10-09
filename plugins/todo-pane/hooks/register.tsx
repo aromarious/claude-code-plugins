@@ -370,11 +370,15 @@ async function prevDay($: any) {
   return prevDayBlock(last.slice(0, 10), String(await $.fs.read(path).catch(() => '')), path, lang)
 }
 
-// Open panes by id. Set when $.ui.open places one, cleared by the ui.close hook.
-const open = new Set<string>()
-async function openPane($: any, id: string, title: string) {
-  const r = await $.ui.open({ id, title, focus: true })
-  if (r?.isPlaced) open.add(id)
+// What a pane command does: not open -> open it in front; open but behind another tab -> bring it forward; in front -> close.
+export const paneAction = ({ isOpen, isFront }: { isOpen: boolean; isFront: boolean }): 'open' | 'front' | 'close' =>
+  !isOpen ? 'open' : isFront ? 'close' : 'front'
+// $.ui.open with focus raises the tab (and retitles an open one), so open and front are the same call.
+const openPane = ($: any, id: string, title: string) => $.ui.open({ id, title, focus: true })
+// The engine's record of this plugin's panes; isShown marks the one tab in front. An unplaced pane counts as not open.
+async function stateOf($: any, id: string) {
+  const pane = ((await $.ui.panes().catch(() => [])) as { id: string; isShown: boolean; isPlaced: boolean }[]).find(x => x.id === id)
+  return { isOpen: !!pane?.isPlaced, isFront: !!pane?.isShown }
 }
 
 export const register: Register = (on, options) => {
@@ -397,10 +401,10 @@ export const register: Register = (on, options) => {
     // ponytail: polls every 3s; a file watch would be nicer if the API grows one
     $.clock.every(3000, () => void refresh())
     void openPane($, NOW_PANE, L[lang].todoTitle)
-    // The pin board opens at start only when this session's file exists; /todo-pane-pins opens it later.
+    // The pin board opens at start only when this session's file exists; /todo-pane-pinboard opens it later.
     if (pin) void openPane($, PIN_PANE, L[lang].pinTitle)
     // Last, and each guarded: a taken name must not stop the panes or the timer above.
-    for (const [name, description] of [['todo-pane', 'Open or close the TODO pane'], ['todo-pane-pins', 'Open or close the pins pane']])
+    for (const [name, description] of [['todo-pane', 'Open, bring forward, or close the TODO pane'], ['todo-pane-pinboard', 'Open, bring forward, or close the pinboard pane']])
       try { await $.command.register({ name, description }) } catch (err) { $.ui.log(`command ${name} not registered: ${err}`, { to: 'debug' }) }
 
     return next(e)
@@ -441,18 +445,16 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
-  on('ui.close', async ($, e, next) => {
-    open.delete(e.id)
-    return next(e)
-  })
-
-  // Opening a pane that is open alone only retitles it, so focus is passed to raise the tab.
-  // Both commands toggle. /todo-pane opening is an explicit yes: create the board if missing and drop an earlier "no" (.off).
+  // Both commands: open in front / bring forward / close (see paneAction). /todo-pane opening is an explicit yes: create the board if missing and drop an earlier "no" (.off).
   on('command.run', { command: 'todo-pane' }, async $ => {
-    if (open.has(NOW_PANE)) {
+    const act = paneAction(await stateOf($, NOW_PANE))
+    if (act === 'close') {
       await $.ui.close({ id: NOW_PANE })
-      open.delete(NOW_PANE)
       return { text: 'Closed.' }
+    }
+    if (act === 'front') {
+      await openPane($, NOW_PANE, L[lang].todoTitle)
+      return { text: 'Brought forward.' }
     }
     // Pick up a name set by -n / /rename first, or the file is created under the bare id and renamed 3s later.
     await sync($).catch(() => {})
@@ -469,14 +471,14 @@ export const register: Register = (on, options) => {
     return { text: created ? `Created ${p.todo} and opened.` : 'Opened.' }
   })
 
-  on('command.run', { command: 'todo-pane-pins' }, async $ => {
-    if (open.has(PIN_PANE)) {
+  on('command.run', { command: 'todo-pane-pinboard' }, async $ => {
+    const act = paneAction(await stateOf($, PIN_PANE))
+    if (act === 'close') {
       await $.ui.close({ id: PIN_PANE })
-      open.delete(PIN_PANE)
       return { text: 'Closed.' }
     }
     await openPane($, PIN_PANE, L[lang].pinTitle)
-    return { text: 'Opened.' }
+    return { text: act === 'front' ? 'Brought forward.' : 'Opened.' }
   })
 
   // The pin skill: tell it the concrete file and show the pins pane.
@@ -484,7 +486,7 @@ export const register: Register = (on, options) => {
     const r = await next(e)
     if (e.skill !== 'todo-pane:pin' || !r || !('text' in r)) return r
     await sync($).catch(() => {})
-    if (!open.has(PIN_PANE)) await openPane($, PIN_PANE, L[lang].pinTitle).catch(() => {})
+    if (!(await stateOf($, PIN_PANE)).isOpen) await openPane($, PIN_PANE, L[lang].pinTitle).catch(() => {})
     return { text: `${r.text}\n\nPin file for this session: ${p.pin} (create it if missing).` }
   })
 
