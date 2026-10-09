@@ -249,6 +249,18 @@ export const appendDone = (existing: string | undefined, date: string, sessionLa
   return `${head}${L[lang].session(sessionLabel)}\n\n${body}\n`
 }
 
+// True when today's done section already has a checked item; the previous day is shown only when it has none.
+export const hasDoneToday = (text: string, date: string, lang: Lang) => {
+  const lines = text.split('\n')
+  const i = lines.indexOf(L[lang].done(date))
+  if (i < 0) return false
+  for (const l of lines.slice(i + 1)) {
+    if (l.startsWith('## ')) break
+    if (l.startsWith('- [x]')) return true
+  }
+  return false
+}
+
 // Last 5 "- [x]" lines of a done file, for the TODO tab (display only).
 export const prevDayBlock = (date: string, fileText: string, path: string, lang: Lang) => {
   const items = fileText.split('\n').filter(l => l.startsWith('- [x]'))
@@ -375,7 +387,7 @@ export const register: Register = (on, options) => {
       await sync($).catch(() => {})
       await archiveIfNeeded($).catch(() => {})
       const file = String(await $.fs.read(p.todo).catch(() => '')).slice(0, 9000)
-      const now = file ? file + (await prevDay($)) : file
+      const now = file ? file + (hasDoneToday(file, today(), lang) ? '' : await prevDay($)) : file
       const pin = String(await $.fs.read(p.pin).catch(() => '')).slice(0, 9000)
       await update($, nowText, prev => (prev === now ? prev : now))
       await update($, pinText, prev => (prev === pin ? prev : pin))
