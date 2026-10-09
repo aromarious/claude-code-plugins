@@ -31,9 +31,19 @@ The pane and the instructions to Claude are implemented by a mod (a function hoo
 
 Right after installing, a "Configure todo-pane" screen appears. Skip it without entering anything and the files are created under the default `.claude`.
 
+## Commands
+
+| Command | Kind | What it does |
+|---|---|---|
+| `/todo-pane` | Mod command | Opens the TODO pane, or closes it if it is open. Opening creates the todo file if it is missing |
+| `/todo-pane-pins` | Mod command | Opens the Pins pane, or closes it if it is open |
+| `/todo-pane:pin [what to pin]` | Skill | Pins the main content of Claude's last reply. With text after it, pins what the text describes |
+
+The ✕ button at the top right of a pane also closes it. Run the command again to reopen it.
+
 ## When the TODO pane is not visible
 
-If Claude Code's own diff pane (the pane that shows git changes) is open, the TODO pane is hidden behind it, and running `/todo` does not bring it forward. If the right side shows a list of changed files or "Diff unavailable", that is the diff pane. Run `/diff` or click the ✕ at its top right to close it.
+If Claude Code's own diff pane (the pane that shows git changes) is open, the TODO pane is hidden behind it, and running `/todo-pane` does not bring it forward. If the right side shows a list of changed files or "Diff unavailable", that is the diff pane. Run `/diff` or click the ✕ at its top right to close it.
 
 The diff pane can open by itself in a git repository when the screen is wide. Once you close it with `/diff` or ✕, that state is saved as `diffSidebarOpen` in `~/.claude.json` and it no longer opens automatically.
 
@@ -41,11 +51,12 @@ The diff pane can open by itself in a git repository when the screen is wide. On
 
 | Component | Used | Files | Role |
 |---|---|---|---|
-| Function hook (mod) | Yes | `modules` in `hooks/hooks.json`, `hooks/register.tsx` | Draws the panes, adds instructions for Claude on every prompt, detects a missed update, provides the `/todo` and `/pin` commands |
+| Function hook (mod) | Yes | `modules` in `hooks/hooks.json`, `hooks/register.tsx` | Draws the panes, adds instructions for Claude on every prompt, detects a missed update, provides the `/todo-pane` and `/todo-pane-pins` commands |
 | Setting (`userConfig`) | Yes | `.claude-plugin/plugin.json` | Lets you change the directory `dir` where files are kept ([Settings](#settings)) |
-| Commands | Yes | `hooks/register.tsx` | `/todo` and `/pin`. Not command files; the mod registers them at startup |
+| Commands | Yes | `hooks/register.tsx` | `/todo-pane` and `/todo-pane-pins`. Not command files; the mod registers them at startup |
+| Skill | Yes | `skills/pin/SKILL.md` | `/todo-pane:pin`, which pins something to the Pins pane |
 | Shell command hook | No | — | — |
-| Skills, command files, agents, MCP servers | No | — | — |
+| Command files, agents, MCP servers | No | — | — |
 
 Claude Code has two kinds of hooks: hooks that run a shell command when an event occurs, and hooks that run a function inside Claude Code (mods). todo-pane uses function hooks only. `hooks/hooks.json` just tells Claude Code to load the module that holds them (`register.tsx`).
 
@@ -53,12 +64,14 @@ The mod registers functions for these events.
 
 | Event | What it does |
 |---|---|
-| `session.start` | Detects the display language, registers `/todo` and `/pin`, opens the panes, and starts re-reading the files every 3 seconds |
+| `session.start` | Detects the display language, opens the panes, starts re-reading the files every 3 seconds, and last registers `/todo-pane` and `/todo-pane-pins` (a name already taken does not stop the rest) |
 | `prompt.submit` | On every prompt, attaches instructions for Claude that match the current state |
 | `turn.start` | Remembers the contents of the todo file at the start of the turn |
 | `tool.call` | Records whether a tool that changes files or Notion was called |
 | `turn.complete` | If something was changed but the todo file was not, shows a notice and a status line |
-| `command.run` | On `/todo` or `/pin`, opens the pane and brings it forward. `/todo` also creates the todo file if it is missing |
+| `command.run` | On `/todo-pane` or `/todo-pane-pins`, closes the pane if it is open, otherwise opens it and brings it forward. Opening with `/todo-pane` also creates the todo file if it is missing |
+| `ui.close` | Remembers that a pane was closed (by a command or by ✕), so the next command opens it again |
+| `skill.prompt` | When `/todo-pane:pin` runs, adds the session's pin file path to the skill text and opens the Pins pane |
 | `ui.render` | Draws the pane contents (the Markdown of the todo file and the pin file) |
 
 ### External commands
@@ -83,7 +96,7 @@ One file of each kind is kept per session, under `.claude/` relative to the dire
 
 `<name>` is `<session name>-<first 6 characters of the session ID>` when the session has a name, and the first 8 characters of the session ID otherwise. `/`, `\`, `:` and control characters in the session name are replaced with `_`. Emoji and Japanese are kept as they are.
 
-The pane re-reads the files every 3 seconds. A closed pane can be reopened with `/todo` or `/pin`.
+The pane re-reads the files every 3 seconds. A closed pane can be reopened with `/todo-pane` or `/todo-pane-pins`, and the ✕ button at the top right of a pane closes it, just like running the command again.
 
 The session name comes from the latest `custom-title` line in the session transcript (JSONL). When the name changes mid-session, `<name>` is recomputed during the 3-second re-read, and the existing todo, pin and off files are moved to the new name.
 
@@ -130,7 +143,7 @@ The instructions are written in English. The headings in them follow Claude Code
 
 For pins, the following instruction is attached every time, whether or not the todo file exists and whether or not you answered "don't create".
 
-- When asked to pin something ("pin that", 「ピン留めして」), write the target (the explanation, comparison table, summary, etc. just given) as Markdown to the session's pin file, creating it if missing. This is the pin tab of this plugin's side pane, not claude.ai Artifact pinning. Write only when asked; do not update it as work progresses.
+- When asked to pin something ("pin that", 「ピン留めして」), write the target (the explanation, comparison table, summary, etc. just given) as Markdown to the session's pin file, creating it if missing. This is the pin tab of this plugin's side pane, not claude.ai Artifact pinning. The instruction also mentions the `/todo-pane:pin` skill. Write only when asked; do not update it as work progresses.
 
 If a turn changed files or Notion but the todo file did not change, a notice and a status line tell you, and Claude is told to bring the todo file up to date at the start of the next turn. Changes made by subagents are not counted.
 
@@ -161,4 +174,4 @@ In a session that has no todo file of its own, Claude asks in the first turn whe
 - If you say yes, Claude creates the session's todo file with the "now" and "done (today's date)" headings (in the language from the table above).
 - If you say no, Claude creates an empty file `<dir>/todo/<name>.off` and does not ask again in this session.
 
-In either case, running `/todo` creates a todo file containing only the "## Now" and "## Done (today's date)" headings (Japanese equivalents when the language is Japanese) and shows it in the pane. It also deletes the `.off` file, so you can start using it with `/todo` even after answering "don't create".
+In either case, running `/todo-pane` creates a todo file containing only the "## Now" and "## Done (today's date)" headings (Japanese equivalents when the language is Japanese) and shows it in the pane. It also deletes the `.off` file, so you can start using it with `/todo-pane` even after answering "don't create".

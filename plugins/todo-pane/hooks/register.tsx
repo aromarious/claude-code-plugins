@@ -249,6 +249,18 @@ export const appendDone = (existing: string | undefined, date: string, sessionLa
   return `${head}${L[lang].session(sessionLabel)}\n\n${body}\n`
 }
 
+// True when today's done section already has a checked item; the previous day is shown only when it has none.
+export const hasDoneToday = (text: string, date: string, lang: Lang) => {
+  const lines = text.split('\n')
+  const i = lines.indexOf(L[lang].done(date))
+  if (i < 0) return false
+  for (const l of lines.slice(i + 1)) {
+    if (l.startsWith('## ')) break
+    if (l.startsWith('- [x]')) return true
+  }
+  return false
+}
+
 // Last 5 "- [x]" lines of a done file, for the TODO tab (display only).
 export const prevDayBlock = (date: string, fileText: string, path: string, lang: Lang) => {
   const items = fileText.split('\n').filter(l => l.startsWith('- [x]'))
@@ -279,7 +291,7 @@ const ask = (f: string, off: string, lang: Lang) =>
   `The TODO file ${f} (the TODO list shown in the right-hand pane) does not exist. At the very start of this turn, before anything else, ask the user with AskUserQuestion whether to create a TODO list.\n- Yes: create ${f} with the headings "${L[lang].now}" and "${L[lang].done(today())}", and write the current task under "${L[lang].now}" as \`- [ ] \`.\n- No: create an empty file at ${off} (do not ask again this session).`
 // Sent every turn too, even after a "no" to the todo list: the pin board is independent of it.
 const pinRule = (f: string, lang: Lang) =>
-  `When asked to "pin" something (e.g. "pin that", 「ピン留めして」), write the target (the explanation, comparison table, summary, etc. you just gave) as Markdown to ${f}, creating it if missing. This is the "${L[lang].pinTitle}" tab of this plugin's side pane, not claude.ai Artifact pinning. Only write it when asked; do not update it as work progresses.`
+  `When asked to "pin" something (e.g. "pin that", 「ピン留めして」), write the target (the explanation, comparison table, summary, etc. you just gave) as Markdown to ${f}, creating it if missing. This is the "${L[lang].pinTitle}" tab of this plugin's side pane, not claude.ai Artifact pinning. The user can also run the /todo-pane:pin skill. Only write it when asked; do not update it as work progresses.`
 const emptyBoard = (lang: Lang) => `${L[lang].now}\n\n${L[lang].done(today())}\n`
 const missedText = (f: string) =>
   `In the previous turn files or Notion were changed, but ${f} was not updated. At the start of this turn, update ${f} to the current state.`
@@ -358,19 +370,24 @@ async function prevDay($: any) {
   return prevDayBlock(last.slice(0, 10), String(await $.fs.read(path).catch(() => '')), path, lang)
 }
 
+// Open panes by id. Set when $.ui.open places one, cleared by the ui.close hook.
+const open = new Set<string>()
+async function openPane($: any, id: string, title: string) {
+  const r = await $.ui.open({ id, title, focus: true })
+  if (r?.isPlaced) open.add(id)
+}
+
 export const register: Register = (on, options) => {
   dir = dirFrom(options)
   p = pathsFor(dir, base)
 
   on('session.start', async ($, e, next) => {
     await sync($)
-    await $.command.register({ name: 'todo', description: 'Show the todo list in a side pane' })
-    await $.command.register({ name: 'pin', description: 'Show the pin board in a side pane' })
     const refresh = async () => {
       await sync($).catch(() => {})
       await archiveIfNeeded($).catch(() => {})
       const file = String(await $.fs.read(p.todo).catch(() => '')).slice(0, 9000)
-      const now = file ? file + (await prevDay($)) : file
+      const now = file ? file + (hasDoneToday(file, today(), lang) ? '' : await prevDay($)) : file
       const pin = String(await $.fs.read(p.pin).catch(() => '')).slice(0, 9000)
       await update($, nowText, prev => (prev === now ? prev : now))
       await update($, pinText, prev => (prev === pin ? prev : pin))
@@ -379,9 +396,12 @@ export const register: Register = (on, options) => {
     const pin = await refresh()
     // ponytail: polls every 3s; a file watch would be nicer if the API grows one
     $.clock.every(3000, () => void refresh())
-    void $.ui.open({ id: NOW_PANE, title: L[lang].todoTitle })
-    // The pin board opens at start only when this session's file exists; /pin opens it later.
-    if (pin) void $.ui.open({ id: PIN_PANE, title: L[lang].pinTitle })
+    void openPane($, NOW_PANE, L[lang].todoTitle)
+    // The pin board opens at start only when this session's file exists; /todo-pane-pins opens it later.
+    if (pin) void openPane($, PIN_PANE, L[lang].pinTitle)
+    // Last, and each guarded: a taken name must not stop the panes or the timer above.
+    for (const [name, description] of [['todo-pane', 'Open or close the TODO pane'], ['todo-pane-pins', 'Open or close the pins pane']])
+      try { await $.command.register({ name, description }) } catch (err) { $.ui.log(`command ${name} not registered: ${err}`, { to: 'debug' }) }
 
     return next(e)
   })
@@ -421,9 +441,19 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
-  // focus raises the tab: with both panes open, re-opening an open id alone only retitles it.
-  // /todo is an explicit yes: create the board if missing and drop an earlier "no" (.off).
-  on('command.run', { command: 'todo' }, async $ => {
+  on('ui.close', async ($, e, next) => {
+    open.delete(e.id)
+    return next(e)
+  })
+
+  // Opening a pane that is open alone only retitles it, so focus is passed to raise the tab.
+  // Both commands toggle. /todo-pane opening is an explicit yes: create the board if missing and drop an earlier "no" (.off).
+  on('command.run', { command: 'todo-pane' }, async $ => {
+    if (open.has(NOW_PANE)) {
+      await $.ui.close({ id: NOW_PANE })
+      open.delete(NOW_PANE)
+      return { text: 'Closed.' }
+    }
     // Pick up a name set by -n / /rename first, or the file is created under the bare id and renamed 3s later.
     await sync($).catch(() => {})
     let created = false
@@ -435,13 +465,27 @@ export const register: Register = (on, options) => {
     }
     if (await $.fs.exists(p.off)) await $.process.run(['rm', '-f', p.off]).catch(() => {})
     if (created) await update($, nowText, () => emptyBoard(lang))
-    await $.ui.open({ id: NOW_PANE, title: L[lang].todoTitle, focus: true })
+    await openPane($, NOW_PANE, L[lang].todoTitle)
     return { text: created ? `Created ${p.todo} and opened.` : 'Opened.' }
   })
 
-  on('command.run', { command: 'pin' }, async $ => {
-    await $.ui.open({ id: PIN_PANE, title: L[lang].pinTitle, focus: true })
+  on('command.run', { command: 'todo-pane-pins' }, async $ => {
+    if (open.has(PIN_PANE)) {
+      await $.ui.close({ id: PIN_PANE })
+      open.delete(PIN_PANE)
+      return { text: 'Closed.' }
+    }
+    await openPane($, PIN_PANE, L[lang].pinTitle)
     return { text: 'Opened.' }
+  })
+
+  // The pin skill: tell it the concrete file and show the pins pane.
+  on('skill.prompt', async ($, e, next) => {
+    const r = await next(e)
+    if (e.skill !== 'todo-pane:pin' || !r || !('text' in r)) return r
+    await sync($).catch(() => {})
+    if (!open.has(PIN_PANE)) await openPane($, PIN_PANE, L[lang].pinTitle).catch(() => {})
+    return { text: `${r.text}\n\nPin file for this session: ${p.pin} (create it if missing).` }
   })
 
   on('ui.render', { component: 'Pane', requestId: NOW_PANE }, async ($, e) => {

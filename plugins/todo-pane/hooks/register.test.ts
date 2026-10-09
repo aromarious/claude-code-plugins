@@ -1,5 +1,5 @@
 import { test, expect } from 'claude-code/testing'
-import { isWrite, baseName, sanitize, pathsFor, lastTitle } from './register'
+import { isWrite, baseName, sanitize, pathsFor, lastTitle, hasDoneToday } from './register'
 
 const NOW = '.claude/todo/a-123456.md'
 const OFF = '.claude/todo/a-123456.off'
@@ -63,6 +63,17 @@ test('submit: nothing yet asks the person', async ($, on) => {
   expect(s).toContain('.claude/todo/foo-012345.off')
 })
 
-test('submit: own off marker adds nothing', async ($, on) => {
-  expect(await contextWith($, on, ['.claude/todo/foo-012345.off'])).toEqual([])
+test('submit: own off marker leaves only the pin rule', async ($, on) => {
+  const c = await contextWith($, on, ['.claude/todo/foo-012345.off'])
+  expect(c.length).toBe(1)
+  expect(c[0]).toContain('.claude/pin/foo-012345.md')
+})
+
+test('previous day is hidden once today has a checked item', () => {
+  const d = '2026-10-09'
+  const head = `## 今\n- [ ] a\n\n## やったこと（${d}）\n`
+  expect(hasDoneToday(head, d, 'ja')).toBe(false)
+  expect(hasDoneToday(head + '- [x] done\n', d, 'ja')).toBe(true)
+  expect(hasDoneToday(`## やったこと（2026-10-08）\n- [x] old\n`, d, 'ja')).toBe(false)
+  expect(hasDoneToday(head + '\n## 次\n- [x] elsewhere\n', d, 'ja')).toBe(false)
 })
