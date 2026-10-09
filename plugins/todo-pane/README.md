@@ -89,7 +89,7 @@ The session name comes from the latest `custom-title` line in the session transc
 
 ## When the date changes
 
-The date in the todo file's "## Done (YYYY-MM-DD)" heading (in Japanese, "## やったこと（YYYY-MM-DD）") is today's date in local time. When the date changes, at the next prompt or pane re-read, the contents of the previous day's done section are moved to `<dir>/todo/done/<date>.md` and the todo file's heading is changed to today's date. In the destination file they go under a "## Session <name>" heading. There is one file per date, shared by the sessions in the same directory. The older "## 今日やったこと" heading is read as the dated heading. A heading in either language is accepted, and the heading written afterwards is in the current language.
+The date in the todo file's "## Done (YYYY-MM-DD)" heading (in Japanese, "## やったこと（YYYY-MM-DD）") is today's date in local time. When the date changes, at the next prompt or pane re-read, the contents of the previous day's done section are moved to `<dir>/todo/done/<date>.md` and the todo file's heading is changed to today's date. In the destination file they go under a "## Session <name>" heading. There is one file per date, shared by the sessions in the same directory. The older "## 今日やったこと" heading is read as the dated heading. A done heading in any language is accepted, and the heading written afterwards is in the current language.
 
 Under the TODO tab, a divider follows the todo file, then the completed items of the most recent earlier day, up to the last 5. If there are more than 5, a line "…and N more" with the location of the source file is added. This is display only; it is not written to the todo file.
 
@@ -136,7 +136,11 @@ If a turn changed files or Notion but the todo file did not change, a notice and
 
 ## Display language
 
-Tab titles, todo-file headings, empty-pane placeholders, the previous-day block and notices follow Claude Code's `language` setting. If `language` is Japanese (`Japanese`, `ja`, `日本語` and the like), they are in Japanese; otherwise they are in English. The check runs once, at session start.
+Tab titles, todo-file headings, empty-pane placeholders, the previous-day block and notices follow Claude Code's `language` setting. If `language` names one of the supported languages below, they are in that language; otherwise they are in English. English names, native names and codes all work, in any case (`German`, `Deutsch`, `de`; `Traditional Chinese`, `繁體中文`, `zh-TW`; `pt-BR`). A plain `Chinese` or `中文` is Simplified. The check runs once, at session start.
+
+Supported languages: English, Japanese (日本語), Simplified Chinese (简体中文), Traditional Chinese (繁體中文), Korean (한국어), Spanish (Español), French (Français), German (Deutsch), Portuguese (Português), Italian (Italiano) and Russian (Русский). Other languages are welcome: please open an [issue](https://github.com/aromarious/claude-code-plugins/issues) or a pull request. The strings are in the `L` table at the top of `hooks/register.tsx`.
+
+The table shows the Japanese and English wording as examples.
 
 | Item | Japanese | English |
 |---|---|---|
@@ -148,7 +152,7 @@ Tab titles, todo-file headings, empty-pane placeholders, the previous-day block 
 | Done file session heading | `## セッション <name>` | `## Session <name>` |
 | Missed-update notice | `<file> が更新されていません` | `<file> was not updated` |
 
-The date rollover described above accepts the heading of either language. A newly written heading uses the current language.
+The date rollover described above recognises the done heading of any supported language (`## Done (YYYY-MM-DD)`, `## やったこと（YYYY-MM-DD）`, `## Erledigt (YYYY-MM-DD)`, and so on). Any other heading is left alone, even one that ends with a date, such as `## Meeting notes (2026-10-01)`. A newly written heading uses the current language.
 
 ## When there is no todo file
 

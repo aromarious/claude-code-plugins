@@ -40,7 +40,7 @@ export const today = () => {
 }
 
 // Fixed strings the person sees (headings, tab titles, placeholders, toasts). Prompts to Claude stay English.
-export type Lang = 'ja' | 'en'
+export type Lang = 'ja' | 'en' | 'zh-Hans' | 'zh-Hant' | 'ko' | 'es' | 'fr' | 'de' | 'pt' | 'it' | 'ru'
 export const L = {
   ja: {
     now: '## 今',
@@ -70,18 +70,162 @@ export const L = {
     missedToast: (f: string) => `${f} was not updated`,
     missedStatus: (f: string) => `${f} not updated`,
   },
+  'zh-Hans': {
+    now: '## 现在',
+    done: (d: string) => `## 已完成（${d}）`,
+    todoTitle: 'TODO',
+    pinTitle: '固定',
+    emptyTodo: '（暂无 TODO）',
+    emptyPin: '（暂无固定内容）',
+    prevDay: (d: string) => `#### 前一天（${d}）`,
+    more: (n: number, path: string) => `…另有 ${n} 项（${path}）`,
+    doneTitle: (d: string) => `# ${d} 已完成事项`,
+    session: (label: string) => `## 会话 ${label}`,
+    missedToast: (f: string) => `${f} 尚未更新`,
+    missedStatus: (f: string) => `${f} 未更新`,
+  },
+  'zh-Hant': {
+    now: '## 現在',
+    done: (d: string) => `## 已完成（${d}）`,
+    todoTitle: 'TODO',
+    pinTitle: '釘選',
+    emptyTodo: '（尚無 TODO）',
+    emptyPin: '（尚無釘選內容）',
+    prevDay: (d: string) => `#### 前一天（${d}）`,
+    more: (n: number, path: string) => `…另有 ${n} 項（${path}）`,
+    doneTitle: (d: string) => `# ${d} 已完成事項`,
+    session: (label: string) => `## 工作階段 ${label}`,
+    missedToast: (f: string) => `${f} 尚未更新`,
+    missedStatus: (f: string) => `${f} 未更新`,
+  },
+  'ko': {
+    now: '## 지금',
+    done: (d: string) => `## 완료 (${d})`,
+    todoTitle: 'TODO',
+    pinTitle: '고정',
+    emptyTodo: '(TODO가 아직 없습니다)',
+    emptyPin: '(고정된 항목이 없습니다)',
+    prevDay: (d: string) => `#### 전날 (${d})`,
+    more: (n: number, path: string) => `…외 ${n}건 (${path})`,
+    doneTitle: (d: string) => `# ${d} 완료한 일`,
+    session: (label: string) => `## 세션 ${label}`,
+    missedToast: (f: string) => `${f} 업데이트되지 않았습니다`,
+    missedStatus: (f: string) => `${f} 업데이트 안 됨`,
+  },
+  'es': {
+    now: '## Ahora',
+    done: (d: string) => `## Hecho (${d})`,
+    todoTitle: 'TODO',
+    pinTitle: 'Fijados',
+    emptyTodo: '(Aún no hay TODO)',
+    emptyPin: '(Nada fijado todavía)',
+    prevDay: (d: string) => `#### Día anterior (${d})`,
+    more: (n: number, path: string) => `…y ${n} más (${path})`,
+    doneTitle: (d: string) => `# Hecho el ${d}`,
+    session: (label: string) => `## Sesión ${label}`,
+    missedToast: (f: string) => `${f} no se ha actualizado`,
+    missedStatus: (f: string) => `${f} sin actualizar`,
+  },
+  'fr': {
+    now: '## En cours',
+    done: (d: string) => `## Terminé (${d})`,
+    todoTitle: 'TODO',
+    pinTitle: 'Épinglés',
+    emptyTodo: '(Aucun TODO pour l’instant)',
+    emptyPin: '(Rien d’épinglé pour l’instant)',
+    prevDay: (d: string) => `#### Jour précédent (${d})`,
+    more: (n: number, path: string) => `…et ${n} de plus (${path})`,
+    doneTitle: (d: string) => `# Terminé le ${d}`,
+    session: (label: string) => `## Session ${label}`,
+    missedToast: (f: string) => `${f} n’a pas été mis à jour`,
+    missedStatus: (f: string) => `${f} non mis à jour`,
+  },
+  'de': {
+    now: '## Jetzt',
+    done: (d: string) => `## Erledigt (${d})`,
+    todoTitle: 'TODO',
+    pinTitle: 'Angepinnt',
+    emptyTodo: '(Noch keine TODOs)',
+    emptyPin: '(Noch nichts angepinnt)',
+    prevDay: (d: string) => `#### Vorheriger Tag (${d})`,
+    more: (n: number, path: string) => `…und ${n} weitere (${path})`,
+    doneTitle: (d: string) => `# Erledigt am ${d}`,
+    session: (label: string) => `## Sitzung ${label}`,
+    missedToast: (f: string) => `${f} wurde nicht aktualisiert`,
+    missedStatus: (f: string) => `${f} nicht aktualisiert`,
+  },
+  'pt': {
+    now: '## Agora',
+    done: (d: string) => `## Concluído (${d})`,
+    todoTitle: 'TODO',
+    pinTitle: 'Fixados',
+    emptyTodo: '(Nenhum TODO ainda)',
+    emptyPin: '(Nada fixado ainda)',
+    prevDay: (d: string) => `#### Dia anterior (${d})`,
+    more: (n: number, path: string) => `…e mais ${n} (${path})`,
+    doneTitle: (d: string) => `# Concluído em ${d}`,
+    session: (label: string) => `## Sessão ${label}`,
+    missedToast: (f: string) => `${f} não foi atualizado`,
+    missedStatus: (f: string) => `${f} não atualizado`,
+  },
+  'it': {
+    now: '## Ora',
+    done: (d: string) => `## Fatto (${d})`,
+    todoTitle: 'TODO',
+    pinTitle: 'Fissati',
+    emptyTodo: '(Nessun TODO per ora)',
+    emptyPin: '(Nulla di fissato per ora)',
+    prevDay: (d: string) => `#### Giorno precedente (${d})`,
+    more: (n: number, path: string) => `…e altri ${n} (${path})`,
+    doneTitle: (d: string) => `# Fatto il ${d}`,
+    session: (label: string) => `## Sessione ${label}`,
+    missedToast: (f: string) => `${f} non è stato aggiornato`,
+    missedStatus: (f: string) => `${f} non aggiornato`,
+  },
+  'ru': {
+    now: '## Сейчас',
+    done: (d: string) => `## Готово (${d})`,
+    todoTitle: 'TODO',
+    pinTitle: 'Закреплено',
+    emptyTodo: '(TODO пока нет)',
+    emptyPin: '(Ничего не закреплено)',
+    prevDay: (d: string) => `#### Предыдущий день (${d})`,
+    more: (n: number, path: string) => `…и ещё ${n} (${path})`,
+    doneTitle: (d: string) => `# Сделано за ${d}`,
+    session: (label: string) => `## Сессия ${label}`,
+    missedToast: (f: string) => `${f} не был обновлён`,
+    missedStatus: (f: string) => `${f} не обновлён`,
+  },
 }
-// Japanese when Claude Code's `language` setting says so, otherwise English.
-export const langFrom = (language: unknown): Lang => (/^(ja|japanese|日本語)/i.test(String(language ?? '')) ? 'ja' : 'en')
+// Maps Claude Code's free-text `language` setting (English or native name, or a code) to a table key; anything else is English.
+// Traditional Chinese is tested before the general Chinese pattern.
+const LANG_PATTERNS: [Lang, RegExp][] = [
+  ['zh-Hant', /繁|traditional|^zh[-_ ]?(tw|hk|mo|hant)(?!\p{L})/iu],
+  ['zh-Hans', /^(中文|简|汉)|^(chinese|simplified|zh)(?!\p{L})/iu],
+  ['ja', /^(ja|japanese|日本語)/i],
+  ['ko', /^(ko|korean|한국어)(?!\p{L})/iu],
+  ['es', /^(es|spanish|español|espanol)(?!\p{L})/iu],
+  ['fr', /^(fr|french|français|francais)(?!\p{L})/iu],
+  ['de', /^(de|german|deutsch)(?!\p{L})/iu],
+  ['pt', /^(pt|portuguese|português|portugues)(?!\p{L})/iu],
+  ['it', /^(it|italian|italiano)(?!\p{L})/iu],
+  ['ru', /^(ru|russian|русский)(?!\p{L})/iu],
+]
+export const langFrom = (language: unknown): Lang => {
+  const s = String(language ?? '').trim()
+  return LANG_PATTERNS.find(([, re]) => re.test(s))?.[0] ?? 'en'
+}
 // Set once in session.start; English until then.
 let lang: Lang = 'en'
 let langRead = false
 
-// Either language's dated heading, and the legacy one.
-const DONE_RE = /^## (?:やったこと（|Done \()(\d{4}-\d{2}-\d{2})[）)]\s*$/
+// The done heading of any language in L, built from the table so a dated heading of the user's own
+// (e.g. "## Meeting notes (2026-10-01)") is never taken for it.
+const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+const DONE_RE = new RegExp(`^(?:${[...new Set(Object.values(L).map(t => esc(t.done('\u0000')).replace('\u0000', '\\d{4}-\\d{2}-\\d{2}')))].join('|')})\\s*$`)
 const LEGACY_RE = /^## 今日やったこと\s*$/
 
-// Date changed: move the old done section (either language) out of the todo text. Pure; the caller does the I/O.
+// Date changed: move the old done section (any language) out of the todo text. Pure; the caller does the I/O.
 export const rollover = (text: string, today: string, lang: Lang): { text: string; archived?: { date: string; body: string } } => {
   const lines = text.split('\n')
   const i = lines.findIndex(l => DONE_RE.test(l) || LEGACY_RE.test(l))
@@ -90,7 +234,7 @@ export const rollover = (text: string, today: string, lang: Lang): { text: strin
     lines[i] = L[lang].done(today)
     return { text: lines.join('\n') }
   }
-  const date = lines[i].match(DONE_RE)![1]
+  const date = lines[i].match(/\d{4}-\d{2}-\d{2}/)![0]
   if (date >= today) return { text }
   let j = i + 1
   while (j < lines.length && !lines[j].startsWith('## ')) j++
