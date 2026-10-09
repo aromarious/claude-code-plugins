@@ -397,10 +397,10 @@ export const register: Register = (on, options) => {
     // ponytail: polls every 3s; a file watch would be nicer if the API grows one
     $.clock.every(3000, () => void refresh())
     void openPane($, NOW_PANE, L[lang].todoTitle)
-    // The pin board opens at start only when this session's file exists; /todo-pane-pins opens it later.
+    // The pin board opens at start only when this session's file exists; /todo-pane-pinboard opens it later.
     if (pin) void openPane($, PIN_PANE, L[lang].pinTitle)
     // Last, and each guarded: a taken name must not stop the panes or the timer above.
-    for (const [name, description] of [['todo-pane', 'Open or close the TODO pane'], ['todo-pane-pins', 'Open or close the pins pane']])
+    for (const [name, description] of [['todo-pane', 'Open or close the TODO pane'], ['todo-pane-pinboard', 'Open or close the pinboard pane']])
       try { await $.command.register({ name, description }) } catch (err) { $.ui.log(`command ${name} not registered: ${err}`, { to: 'debug' }) }
 
     return next(e)
@@ -469,7 +469,7 @@ export const register: Register = (on, options) => {
     return { text: created ? `Created ${p.todo} and opened.` : 'Opened.' }
   })
 
-  on('command.run', { command: 'todo-pane-pins' }, async $ => {
+  on('command.run', { command: 'todo-pane-pinboard' }, async $ => {
     if (open.has(PIN_PANE)) {
       await $.ui.close({ id: PIN_PANE })
       open.delete(PIN_PANE)

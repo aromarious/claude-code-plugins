@@ -1,6 +1,6 @@
 {
   "name": "todo-pane",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Shows this session's todo list (what we are working on) and pin board (pinned notes) in side panes, one file per session under a directory",
   "types": "./types/index.d.ts",
   "userConfig": {

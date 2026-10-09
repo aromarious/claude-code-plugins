@@ -36,7 +36,7 @@ Right after installing, a "Configure todo-pane" screen appears. Skip it without 
 | Command | Kind | What it does |
 |---|---|---|
 | `/todo-pane` | Mod command | Opens the TODO pane, or closes it if it is open. Opening creates the todo file if it is missing |
-| `/todo-pane-pins` | Mod command | Opens the Pins pane, or closes it if it is open |
+| `/todo-pane-pinboard` | Mod command | Opens the Pins pane, or closes it if it is open |
 | `/todo-pane:pin [what to pin]` | Skill | Pins the main content of Claude's last reply. With text after it, pins what the text describes |
 
 The ✕ button at the top right of a pane also closes it. Run the command again to reopen it.
@@ -51,9 +51,9 @@ The diff pane can open by itself in a git repository when the screen is wide. On
 
 | Component | Used | Files | Role |
 |---|---|---|---|
-| Function hook (mod) | Yes | `modules` in `hooks/hooks.json`, `hooks/register.tsx` | Draws the panes, adds instructions for Claude on every prompt, detects a missed update, provides the `/todo-pane` and `/todo-pane-pins` commands |
+| Function hook (mod) | Yes | `modules` in `hooks/hooks.json`, `hooks/register.tsx` | Draws the panes, adds instructions for Claude on every prompt, detects a missed update, provides the `/todo-pane` and `/todo-pane-pinboard` commands |
 | Setting (`userConfig`) | Yes | `.claude-plugin/plugin.json` | Lets you change the directory `dir` where files are kept ([Settings](#settings)) |
-| Commands | Yes | `hooks/register.tsx` | `/todo-pane` and `/todo-pane-pins`. Not command files; the mod registers them at startup |
+| Commands | Yes | `hooks/register.tsx` | `/todo-pane` and `/todo-pane-pinboard`. Not command files; the mod registers them at startup |
 | Skill | Yes | `skills/pin/SKILL.md` | `/todo-pane:pin`, which pins something to the Pins pane |
 | Shell command hook | No | — | — |
 | Command files, agents, MCP servers | No | — | — |
@@ -64,12 +64,12 @@ The mod registers functions for these events.
 
 | Event | What it does |
 |---|---|
-| `session.start` | Detects the display language, opens the panes, starts re-reading the files every 3 seconds, and last registers `/todo-pane` and `/todo-pane-pins` (a name already taken does not stop the rest) |
+| `session.start` | Detects the display language, opens the panes, starts re-reading the files every 3 seconds, and last registers `/todo-pane` and `/todo-pane-pinboard` (a name already taken does not stop the rest) |
 | `prompt.submit` | On every prompt, attaches instructions for Claude that match the current state |
 | `turn.start` | Remembers the contents of the todo file at the start of the turn |
 | `tool.call` | Records whether a tool that changes files or Notion was called |
 | `turn.complete` | If something was changed but the todo file was not, shows a notice and a status line |
-| `command.run` | On `/todo-pane` or `/todo-pane-pins`, closes the pane if it is open, otherwise opens it and brings it forward. Opening with `/todo-pane` also creates the todo file if it is missing |
+| `command.run` | On `/todo-pane` or `/todo-pane-pinboard`, closes the pane if it is open, otherwise opens it and brings it forward. Opening with `/todo-pane` also creates the todo file if it is missing |
 | `ui.close` | Remembers that a pane was closed (by a command or by ✕), so the next command opens it again |
 | `skill.prompt` | When `/todo-pane:pin` runs, adds the session's pin file path to the skill text and opens the Pins pane |
 | `ui.render` | Draws the pane contents (the Markdown of the todo file and the pin file) |
@@ -96,7 +96,7 @@ One file of each kind is kept per session, under `.claude/` relative to the dire
 
 `<name>` is `<session name>-<first 6 characters of the session ID>` when the session has a name, and the first 8 characters of the session ID otherwise. `/`, `\`, `:` and control characters in the session name are replaced with `_`. Emoji and Japanese are kept as they are.
 
-The pane re-reads the files every 3 seconds. A closed pane can be reopened with `/todo-pane` or `/todo-pane-pins`, and the ✕ button at the top right of a pane closes it, just like running the command again.
+The pane re-reads the files every 3 seconds. A closed pane can be reopened with `/todo-pane` or `/todo-pane-pinboard`, and the ✕ button at the top right of a pane closes it, just like running the command again.
 
 The session name comes from the latest `custom-title` line in the session transcript (JSONL). When the name changes mid-session, `<name>` is recomputed during the 3-second re-read, and the existing todo, pin and off files are moved to the new name.
 

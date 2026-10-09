@@ -42,7 +42,7 @@ Claude Code本体の差分ペイン（gitの変更を表示するペイン）が
 | コマンド | 種類 | していること |
 |---|---|---|
 | `/todo-pane` | modのコマンド | TODOペインを開く。開いていれば閉じる。開くときは、todoファイルが無ければ作る |
-| `/todo-pane-pins` | modのコマンド | ピン留めペインを開く。開いていれば閉じる |
+| `/todo-pane-pinboard` | modのコマンド | ピン留めペインを開く。開いていれば閉じる |
 | `/todo-pane:pin [ピン留めする内容]` | skill | Claudeの直前の返答の主な内容をピン留めする。後ろに文章を付けると、その文章が指すものをピン留めする |
 
 ペイン右上の✕ボタンでも閉じられる。もう一度コマンドを実行すれば開き直せる。
@@ -51,9 +51,9 @@ Claude Code本体の差分ペイン（gitの変更を表示するペイン）が
 
 | 要素 | 使っているか | ファイル | 役割 |
 |---|---|---|---|
-| 関数のhook（mod） | 使う | `hooks/hooks.json`の`modules`、`hooks/register.tsx` | ペインの表示、発言ごとのClaudeへの指示、更新し忘れの検知、`/todo-pane`・`/todo-pane-pins`コマンド |
+| 関数のhook（mod） | 使う | `hooks/hooks.json`の`modules`、`hooks/register.tsx` | ペインの表示、発言ごとのClaudeへの指示、更新し忘れの検知、`/todo-pane`・`/todo-pane-pinboard`コマンド |
 | 設定項目（`userConfig`） | 使う | `.claude-plugin/plugin.json` | ファイルを置くディレクトリ`dir`を変えられるようにする（[設定](#設定)） |
-| コマンド | 使う | `hooks/register.tsx` | `/todo-pane`・`/todo-pane-pins`。コマンドファイルではなく、modが起動時に登録する |
+| コマンド | 使う | `hooks/register.tsx` | `/todo-pane`・`/todo-pane-pinboard`。コマンドファイルではなく、modが起動時に登録する |
 | skill | 使う | `skills/pin/SKILL.md` | `/todo-pane:pin`。ピン留めタブに内容を書く |
 | シェルコマンドのhook | 使わない | — | — |
 | コマンドファイル・agent・MCPサーバー | 使わない | — | — |
@@ -64,12 +64,12 @@ modが関数を登録しているイベントは次のとおり。
 
 | イベント | していること |
 |---|---|
-| `session.start` | ペインを開き、3秒ごとのファイルの読み直しを始め、最後に`/todo-pane`・`/todo-pane-pins`を登録する（名前が使用済みでも、ほかの処理は止まらない） |
+| `session.start` | ペインを開き、3秒ごとのファイルの読み直しを始め、最後に`/todo-pane`・`/todo-pane-pinboard`を登録する（名前が使用済みでも、ほかの処理は止まらない） |
 | `prompt.submit` | 発言のたびに、その時点の状態に合わせた指示をClaude向けに添える |
 | `turn.start` | ターンの始まりにtodoファイルの中身を控えておく |
 | `tool.call` | ファイルやNotionを書き換えるツールが呼ばれたかを記録する |
 | `turn.complete` | 書き換えがあったのにtodoファイルが変わっていなければ、通知とステータス表示を出す |
-| `command.run` | `/todo-pane`・`/todo-pane-pins`を実行したときに、ペインが開いていれば閉じ、閉じていれば開いて前に出す。`/todo-pane`で開くときは、todoファイルが無ければ作る |
+| `command.run` | `/todo-pane`・`/todo-pane-pinboard`を実行したときに、ペインが開いていれば閉じ、閉じていれば開いて前に出す。`/todo-pane`で開くときは、todoファイルが無ければ作る |
 | `ui.close` | ペインが閉じられたこと（コマンドでも✕でも）を覚えておき、次のコマンドで開き直せるようにする |
 | `skill.prompt` | `/todo-pane:pin`の実行時に、そのセッションのpinファイルのパスをskillの文面に足し、ピン留めペインを開く |
 | `ui.render` | ペインの中身（todoファイル・pinファイルのMarkdown）を描く |
@@ -96,7 +96,7 @@ modの中から、次のコマンドを実行している。いずれもmacOSと
 
 `<名前>`は、セッション名があれば`<セッション名>-<セッションIDの先頭6文字>`、なければ`<セッションIDの先頭8文字>`になる。セッション名に含まれる`/` `\` `:`と制御文字は`_`に置き換える。絵文字や日本語はそのまま使う。
 
-ペインは3秒ごとにファイルを読み直す。閉じたペインは`/todo-pane`か`/todo-pane-pins`で開き直せる。ペイン右上の✕ボタンでも閉じられ、コマンドをもう一度実行したときと同じ状態になる。
+ペインは3秒ごとにファイルを読み直す。閉じたペインは`/todo-pane`か`/todo-pane-pinboard`で開き直せる。ペイン右上の✕ボタンでも閉じられ、コマンドをもう一度実行したときと同じ状態になる。
 
 セッション名は、そのセッションのtranscript（JSONL）にある最新の`custom-title`行から取る。セッション名が途中で変わったときは、3秒ごとの読み直しのついでに`<名前>`を計算し直し、todo・pin・offの既存ファイルを新しい名前へ移す。
 
