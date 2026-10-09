@@ -69,7 +69,7 @@ The mod registers functions for these events.
 | `turn.start` | Remembers the contents of the todo file at the start of the turn |
 | `tool.call` | Records whether a tool that changes files or Notion was called |
 | `turn.complete` | If something was changed but the todo file was not, shows a notice and a status line |
-| `command.run` | On `/todo-pane` or `/todo-pane-pinboard`, closes the pane if it is open, otherwise opens it and brings it forward. Opening with `/todo-pane` also creates the todo file if it is missing |
+| `command.run` | On `/todo-pane` or `/todo-pane-pinboard`, opens the pane in front if it is closed, brings it forward if another tab is in front, and closes it if it is already in front. Opening with `/todo-pane` also creates the todo file if it is missing |
 | `ui.close` | Remembers that a pane was closed (by a command or by ✕), so the next command opens it again |
 | `skill.prompt` | When `/todo-pane:pin` runs, adds the session's pin file path to the skill text and opens the Pins pane |
 | `ui.render` | Draws the pane contents (the Markdown of the todo file and the pin file) |

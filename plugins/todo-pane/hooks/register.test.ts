@@ -1,5 +1,5 @@
 import { test, expect } from 'claude-code/testing'
-import { isWrite, baseName, sanitize, pathsFor, lastTitle, hasDoneToday } from './register'
+import { isWrite, baseName, sanitize, pathsFor, lastTitle, hasDoneToday, paneAction } from './register'
 
 const NOW = '.claude/todo/a-123456.md'
 const OFF = '.claude/todo/a-123456.off'
@@ -76,4 +76,10 @@ test('previous day is hidden once today has a checked item', () => {
   expect(hasDoneToday(head + '- [x] done\n', d, 'ja')).toBe(true)
   expect(hasDoneToday(`## やったこと（2026-10-08）\n- [x] old\n`, d, 'ja')).toBe(false)
   expect(hasDoneToday(head + '\n## 次\n- [x] elsewhere\n', d, 'ja')).toBe(false)
+})
+
+test('paneAction: open, bring forward, or close', () => {
+  expect(paneAction({ isOpen: false, isFront: false })).toBe('open')
+  expect(paneAction({ isOpen: true, isFront: false })).toBe('front')
+  expect(paneAction({ isOpen: true, isFront: true })).toBe('close')
 })
