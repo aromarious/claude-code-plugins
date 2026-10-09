@@ -1,5 +1,5 @@
 import { test, expect } from 'claude-code/testing'
-import { isWrite, baseName, sanitize, pathsFor, lastTitle, hasDoneToday, paneAction } from './register'
+import { isWrite, baseName, sanitize, pathsFor, lastTitle, hasDoneToday, paneAction, truncateForWidth, displayWidth } from './register'
 
 const NOW = '.claude/todo/a-123456.md'
 const OFF = '.claude/todo/a-123456.off'
@@ -82,4 +82,45 @@ test('paneAction: open, bring forward, or close', () => {
   expect(paneAction({ isOpen: false, isFront: false })).toBe('open')
   expect(paneAction({ isOpen: true, isFront: false })).toBe('front')
   expect(paneAction({ isOpen: true, isFront: true })).toBe('close')
+})
+
+test('truncateForWidth: ASCII, wide chars, lists, headings', () => {
+  const long = 'x'.repeat(100)
+  expect(truncateForWidth('short', 40)).toBe('short')
+  const a = truncateForWidth(`- [ ] ${long}`, 40)
+  expect(a.startsWith('- [ ] xxx')).toBe(true)
+  expect(a.endsWith('…')).toBe(true)
+  expect(displayWidth(a)).toBeLessThanOrEqual(38)
+  const ja = truncateForWidth('- [x] ' + 'あ'.repeat(40), 40)
+  expect(ja.endsWith('…')).toBe(true)
+  expect(displayWidth(ja)).toBeLessThanOrEqual(38)
+  expect(displayWidth('あa')).toBe(3)
+  const h = truncateForWidth(`## ${long}`, 40)
+  expect(h.startsWith('## xxx')).toBe(true)
+  expect(h.endsWith('…')).toBe(true)
+  expect(displayWidth(h.slice(3))).toBeLessThanOrEqual(38)
+})
+
+test('truncateForWidth: nested sub-task keeps indentation and checkbox', () => {
+  const r = truncateForWidth(`  - [ ] ${'y'.repeat(100)}`, 30)
+  expect(r.startsWith('  - [ ] yyy')).toBe(true)
+  expect(r.endsWith('…')).toBe(true)
+  expect(displayWidth(r)).toBeLessThanOrEqual(28)
+})
+
+test('truncateForWidth: code fences, tables and blanks are untouched', () => {
+  const src = ['```', 'z'.repeat(100), '```', '| ' + 'c'.repeat(100) + ' |', '', 'w'.repeat(100)].join('\n')
+  const lines = truncateForWidth(src, 40).split('\n')
+  expect(lines[1]).toBe('z'.repeat(100))
+  expect(lines[3]).toBe('| ' + 'c'.repeat(100) + ' |')
+  expect(lines[4]).toBe('')
+  expect(lines[5].endsWith('…')).toBe(true)
+})
+
+test('truncateForWidth: never leaves an open code span or link', () => {
+  const code = truncateForWidth('- ' + 'a'.repeat(20) + ' `' + 'b'.repeat(50) + '` end', 40)
+  expect((code.match(/`/g) ?? []).length % 2).toBe(0)
+  const link = truncateForWidth('- see [' + 'doc'.repeat(20) + '](https://example.com/very/long) end', 40)
+  expect(link).not.toContain('[')
+  expect(link.endsWith('…')).toBe(true)
 })

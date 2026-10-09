@@ -271,12 +271,68 @@ export const prevDayBlock = (date: string, fileText: string, path: string, lang:
   return `\n\n---\n\n${L[lang].prevDay(date)}\n\n${lines.join('\n')}`
 }
 
+// Display width of one code point: East Asian Wide/Fullwidth and emoji take 2 columns, the rest 1.
+// ponytail: range table, not full Unicode width data; combining marks and ambiguous-width characters count as 1.
+const isWide = (c: number) =>
+  (c >= 0x1100 && c <= 0x115f) || (c >= 0x2e80 && c <= 0x303e) || (c >= 0x3041 && c <= 0x33ff) ||
+  (c >= 0x3400 && c <= 0x4dbf) || (c >= 0x4e00 && c <= 0x9fff) || (c >= 0xa000 && c <= 0xa4cf) ||
+  (c >= 0xac00 && c <= 0xd7a3) || (c >= 0xf900 && c <= 0xfaff) || (c >= 0xfe30 && c <= 0xfe6f) ||
+  (c >= 0xff00 && c <= 0xff60) || (c >= 0xffe0 && c <= 0xffe6) || (c >= 0x1f300 && c <= 0x1faff) ||
+  (c >= 0x20000 && c <= 0x3fffd)
+export const displayWidth = (s: string) => {
+  let w = 0
+  for (const ch of s) w += isWide(ch.codePointAt(0)!) ? 2 : 1
+  return w
+}
+const LIST_RE = /^(\s*(?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s+)?)/
+const HEADING_RE = /^(#{1,6}\s+)/
+const MARGIN = 2
+
+// Cuts each over-long line to `columns` display columns and ends it with "…", so the Markdown element
+// never wraps it. Display only. Blank lines, fenced code and table rows are left alone.
+export const truncateForWidth = (markdown: string, columns: number): string => {
+  let fence = false
+  return markdown
+    .split('\n')
+    .map(line => {
+      const t = line.trimStart()
+      if (/^(```|~~~)/.test(t)) {
+        fence = !fence
+        return line
+      }
+      if (fence || !t || t.startsWith('|')) return line
+      const list = line.match(LIST_RE)?.[1]
+      const heading = list ? undefined : line.match(HEADING_RE)?.[1]
+      const head = list ?? heading ?? ''
+      const rest = line.slice(head.length)
+      // A heading's # marks are not drawn; a list marker is drawn about as wide as its source.
+      const budget = columns - MARGIN - (heading ? 0 : displayWidth(head))
+      if (budget < 4 || displayWidth(rest) <= budget) return line
+      let cut = ''
+      let w = 0
+      for (const ch of rest) {
+        const cw = isWide(ch.codePointAt(0)!) ? 2 : 1
+        if (w + cw > budget - 1) break
+        cut += ch
+        w += cw
+      }
+      // No half-open link or code span: either would swallow what follows.
+      const lb = cut.lastIndexOf('[')
+      if (lb >= 0 && !/\]\([^)]*\)/.test(cut.slice(lb))) cut = cut.slice(0, lb)
+      if ((cut.match(/`/g) ?? []).length % 2) cut = cut.slice(0, cut.lastIndexOf('`'))
+      return head + cut + '…'
+    })
+    .join('\n')
+}
+
 const NOW_PANE = 'todo-pane'
 const PIN_PANE = 'pin-board'
 
 // The engine's scan needs each atom named directly where read/update use it, so the two boards are spelled out.
 const nowText = atom({ plugin: 'todo-pane', key: 'text' } as const, '')
 const pinText = atom({ plugin: 'todo-pane', key: 'pin' } as const, '')
+// true: long TODO lines wrap; false (default): they are cut with "…". Saved with $.store so it outlives the session.
+const wrapOn = atom({ plugin: 'todo-pane', key: 'wrap' } as const, false)
 
 // Sent to the model every turn, so the board stays current without relying on memory.
 const rule = (f: string, lang: Lang) => [
@@ -387,6 +443,7 @@ export const register: Register = (on, options) => {
 
   on('session.start', async ($, e, next) => {
     await sync($)
+    const savedWrap = (await $.store.get('wrap').catch(() => undefined)) === true
     const refresh = async () => {
       await sync($).catch(() => {})
       await archiveIfNeeded($).catch(() => {})
@@ -397,6 +454,7 @@ export const register: Register = (on, options) => {
       await update($, pinText, prev => (prev === pin ? prev : pin))
       return pin
     }
+    await update($, wrapOn, () => savedWrap)
     const pin = await refresh()
     // ponytail: polls every 3s; a file watch would be nicer if the API grows one
     $.clock.every(3000, () => void refresh())
@@ -404,7 +462,7 @@ export const register: Register = (on, options) => {
     // The pin board opens at start only when this session's file exists; /todo-pane-pinboard opens it later.
     if (pin) void openPane($, PIN_PANE, L[lang].pinTitle)
     // Last, and each guarded: a taken name must not stop the panes or the timer above.
-    for (const [name, description] of [['todo-pane', 'Open, bring forward, or close the TODO pane'], ['todo-pane-pinboard', 'Open, bring forward, or close the pinboard pane']])
+    for (const [name, description] of [['todo-pane', 'Open, bring forward, or close the TODO pane'], ['todo-pane-pinboard', 'Open, bring forward, or close the pinboard pane'], ['todo-pane-wrap', 'Toggle wrapping long lines in the TODO pane']])
       try { await $.command.register({ name, description }) } catch (err) { $.ui.log(`command ${name} not registered: ${err}`, { to: 'debug' }) }
 
     return next(e)
@@ -481,6 +539,13 @@ export const register: Register = (on, options) => {
     return { text: act === 'front' ? 'Brought forward.' : 'Opened.' }
   })
 
+  on('command.run', { command: 'todo-pane-wrap' }, async $ => {
+    const v = !(await read($, wrapOn))
+    await update($, wrapOn, () => v)
+    await $.store.set('wrap', v).catch(() => {})
+    return { text: v ? 'Wrap on.' : 'Wrap off (truncate).' }
+  })
+
   // The pin skill: tell it the concrete file and show the pins pane.
   on('skill.prompt', async ($, e, next) => {
     const r = await next(e)
@@ -493,9 +558,13 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'Pane', requestId: NOW_PANE }, async ($, e) => {
     const { Box, Markdown } = $.ui.resolve(e)
     const body = await read($, nowText)
+    // Width of this draw; the engine redraws when it changes. Without one, nothing is cut.
+    const cols = Number((e.props as any)?.bodyColumns)
+    const text = body || L[lang].emptyTodo
+    const wrap = await read($, wrapOn)
     return (
       <Box flexDirection="column">
-        <Markdown text={body || L[lang].emptyTodo} />
+        <Markdown text={wrap || !(cols > 0) ? text : truncateForWidth(text, cols)} />
       </Box>
     )
   })

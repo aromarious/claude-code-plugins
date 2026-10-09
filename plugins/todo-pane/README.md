@@ -37,9 +37,18 @@ Right after installing, a "Configure todo-pane" screen appears. Skip it without 
 |---|---|---|
 | `/todo-pane` | Mod command | Opens the TODO pane, or closes it if it is open. Opening creates the todo file if it is missing |
 | `/todo-pane-pinboard` | Mod command | Opens the Pins pane, or closes it if it is open |
+| `/todo-pane-wrap` | Mod command | Switches long lines in the TODO pane between being cut with "…" (default) and wrapping onto the next row. The choice is kept across sessions |
 | `/todo-pane:pin [what to pin]` | Skill | Pins the main content of Claude's last reply. With text after it, pins what the text describes |
 
 The ✕ button at the top right of a pane also closes it. Run the command again to reopen it.
+
+To toggle wrapping with a key, bind the command in `~/.claude/keybindings.json`. Claude Code keybindings can run a slash command with the action `"command:<name>"`:
+
+```json
+{ "bindings": [ { "context": "Chat", "bindings": { "meta+z": "command:todo-pane-wrap" } } ] }
+```
+
+On macOS, Option+Z reaches Claude Code as Meta+Z only if the terminal sends it that way. In Ghostty, add `keybind = alt+z=esc:z` to its config (and `keybind = cmd+alt+z=esc:z` to also use Cmd+Alt+Z). The `command:` action is not in the official keybindings documentation (it was found in Claude Code itself), so it may change.
 
 ## When the TODO pane is not visible
 
@@ -105,6 +114,8 @@ The session name comes from the latest `custom-title` line in the session transc
 The date in the todo file's "## Done (YYYY-MM-DD)" heading (in Japanese, "## やったこと（YYYY-MM-DD）") is today's date in local time. When the date changes, at the next prompt or pane re-read, the contents of the previous day's done section are moved to `<dir>/todo/done/<date>.md` and the todo file's heading is changed to today's date. In the destination file they go under a "## Session <name>" heading. There is one file per date, shared by the sessions in the same directory. The older "## 今日やったこと" heading is read as the dated heading. A done heading in any language is accepted, and the heading written afterwards is in the current language.
 
 Under the TODO tab, a divider follows the todo file, then the completed items of the most recent earlier day, up to the last 5. If there are more than 5, a line "…and N more" with the location of the source file is added. This is display only; it is not written to the todo file.
+
+Long lines in the TODO tab are cut with "…" to fit the pane's current width instead of wrapping, and the cut is recomputed when the width changes. The todo file keeps the full text, and the Pins tab still wraps.
 
 ## Settings
 
