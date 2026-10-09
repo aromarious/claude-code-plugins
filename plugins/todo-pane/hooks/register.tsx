@@ -331,6 +331,8 @@ const PIN_PANE = 'pin-board'
 // The engine's scan needs each atom named directly where read/update use it, so the two boards are spelled out.
 const nowText = atom({ plugin: 'todo-pane', key: 'text' } as const, '')
 const pinText = atom({ plugin: 'todo-pane', key: 'pin' } as const, '')
+// true: long TODO lines wrap; false (default): they are cut with "…". Saved with $.store so it outlives the session.
+const wrapOn = atom({ plugin: 'todo-pane', key: 'wrap' } as const, false)
 
 // Sent to the model every turn, so the board stays current without relying on memory.
 const rule = (f: string, lang: Lang) => [
@@ -441,6 +443,7 @@ export const register: Register = (on, options) => {
 
   on('session.start', async ($, e, next) => {
     await sync($)
+    const savedWrap = (await $.store.get('wrap').catch(() => undefined)) === true
     const refresh = async () => {
       await sync($).catch(() => {})
       await archiveIfNeeded($).catch(() => {})
@@ -451,6 +454,7 @@ export const register: Register = (on, options) => {
       await update($, pinText, prev => (prev === pin ? prev : pin))
       return pin
     }
+    await update($, wrapOn, () => savedWrap)
     const pin = await refresh()
     // ponytail: polls every 3s; a file watch would be nicer if the API grows one
     $.clock.every(3000, () => void refresh())
@@ -458,7 +462,7 @@ export const register: Register = (on, options) => {
     // The pin board opens at start only when this session's file exists; /todo-pane-pinboard opens it later.
     if (pin) void openPane($, PIN_PANE, L[lang].pinTitle)
     // Last, and each guarded: a taken name must not stop the panes or the timer above.
-    for (const [name, description] of [['todo-pane', 'Open, bring forward, or close the TODO pane'], ['todo-pane-pinboard', 'Open, bring forward, or close the pinboard pane']])
+    for (const [name, description] of [['todo-pane', 'Open, bring forward, or close the TODO pane'], ['todo-pane-pinboard', 'Open, bring forward, or close the pinboard pane'], ['todo-pane-wrap', 'Toggle wrapping long lines in the TODO pane']])
       try { await $.command.register({ name, description }) } catch (err) { $.ui.log(`command ${name} not registered: ${err}`, { to: 'debug' }) }
 
     return next(e)
@@ -535,6 +539,13 @@ export const register: Register = (on, options) => {
     return { text: act === 'front' ? 'Brought forward.' : 'Opened.' }
   })
 
+  on('command.run', { command: 'todo-pane-wrap' }, async $ => {
+    const v = !(await read($, wrapOn))
+    await update($, wrapOn, () => v)
+    await $.store.set('wrap', v).catch(() => {})
+    return { text: v ? 'Wrap on.' : 'Wrap off (truncate).' }
+  })
+
   // The pin skill: tell it the concrete file and show the pins pane.
   on('skill.prompt', async ($, e, next) => {
     const r = await next(e)
@@ -550,9 +561,10 @@ export const register: Register = (on, options) => {
     // Width of this draw; the engine redraws when it changes. Without one, nothing is cut.
     const cols = Number((e.props as any)?.bodyColumns)
     const text = body || L[lang].emptyTodo
+    const wrap = await read($, wrapOn)
     return (
       <Box flexDirection="column">
-        <Markdown text={cols > 0 ? truncateForWidth(text, cols) : text} />
+        <Markdown text={wrap || !(cols > 0) ? text : truncateForWidth(text, cols)} />
       </Box>
     )
   })

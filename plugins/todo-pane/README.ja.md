@@ -43,9 +43,18 @@ Claude Code本体の差分ペイン（gitの変更を表示するペイン）が
 |---|---|---|
 | `/todo-pane` | modのコマンド | TODOペインを開く。開いていれば閉じる。開くときは、todoファイルが無ければ作る |
 | `/todo-pane-pinboard` | modのコマンド | ピン留めペインを開く。開いていれば閉じる |
+| `/todo-pane-wrap` | modのコマンド | TODOペインの長い行を、「…」で切る（初期値）か、次の行に折り返すかを切り替える。選択はセッションをまたいで保存される |
 | `/todo-pane:pin [ピン留めする内容]` | skill | Claudeの直前の返答の主な内容をピン留めする。後ろに文章を付けると、その文章が指すものをピン留めする |
 
 ペイン右上の✕ボタンでも閉じられる。もう一度コマンドを実行すれば開き直せる。
+
+折り返しの切り替えをキーに割り当てるには、`~/.claude/keybindings.json`にコマンドを登録する。Claude Codeのキーバインドでは、アクション`"command:<名前>"`でスラッシュコマンドを実行できる。
+
+```json
+{ "bindings": [ { "context": "Chat", "bindings": { "meta+z": "command:todo-pane-wrap" } } ] }
+```
+
+macOSではOption+Zを、ターミナルがMetaキーとして送る設定にしないとClaude Codeに届かない。Ghosttyなら設定に`keybind = alt+z=esc:z`を足す（Cmd+Alt+Zも使うなら`keybind = cmd+alt+z=esc:z`も足す）。`command:`アクションは公式のキーバインド文書に載っておらず、Claude Code本体から見つけたものなので、将来変わる可能性がある。
 
 ## 構成要素
 
