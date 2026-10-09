@@ -106,6 +106,8 @@ The date in the todo file's "## Done (YYYY-MM-DD)" heading (in Japanese, "## や
 
 Under the TODO tab, a divider follows the todo file, then the completed items of the most recent earlier day, up to the last 5. If there are more than 5, a line "…and N more" with the location of the source file is added. This is display only; it is not written to the todo file.
 
+Long lines in the TODO tab are cut with "…" to fit the pane's current width instead of wrapping, and the cut is recomputed when the width changes. The todo file keeps the full text, and the Pins tab still wraps.
+
 ## Settings
 
 One setting can be changed. It is a path relative to the working directory; an absolute path also works. A changed setting takes effect from the next session.
