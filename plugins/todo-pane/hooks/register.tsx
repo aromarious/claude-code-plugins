@@ -234,6 +234,8 @@ let langRead = false
 // (e.g. "## Meeting notes (2026-10-01)") is never taken for it.
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 const DONE_RE = new RegExp(`^(?:${[...new Set(Object.values(L).map(t => esc(t.done('\u0000')).replace('\u0000', '\\d{4}-\\d{2}-\\d{2}')))].join('|')})\\s*$`)
+// The session heading of any language in L, with the label captured.
+const SESSION_RE = new RegExp(`^(?:${[...new Set(Object.values(L).map(t => esc(t.session('\u0000')).replace('\u0000', '(.+?)')))].join('|')})\\s*$`)
 const LEGACY_RE = /^## 今日やったこと\s*$/
 
 // Date changed: move every earlier done section (any language) out of the todo text, each with its body (up to the
@@ -298,6 +300,21 @@ export const dropExisting = (existing: string | undefined, body: string) => {
   return body.split('\n').filter(l => !(ITEM_RE.test(l) && have.has(l))).join('\n').trim()
 }
 const ITEM_RE = /^\s*- \[[ xX]\]/
+
+// The "- [x]" lines in this session's sections of a done file, in file order. A section is a session heading whose label
+// is this session's (by id, so a rename still matches) up to the next "## " heading.
+export const sessionItems = (text: string, id: string): string[] => {
+  const mine = (label: string) => label === id.slice(0, 8) || label.endsWith('-' + id.slice(0, 6))
+  const items: string[] = []
+  let on = false
+  for (const l of text.split('\n')) {
+    if (l.startsWith('## ')) {
+      const m = l.match(SESSION_RE)
+      on = !!m && mine((m.slice(1).find(Boolean) ?? '').trim())
+    } else if (on && l.startsWith('- [x]')) items.push(l)
+  }
+  return items
+}
 
 // An earlier day with a done file: its "- [x]" lines in file order, and where the file is.
 export type PastDay = { date: string; items: string[]; path: string }
@@ -621,18 +638,25 @@ async function rollOver($: any) {
   }
 }
 
-// The latest 3 earlier days that have a done file, shown under the TODO tab only (as JSON for pastText).
+// The latest 3 earlier days with this session's finished items, shown under the TODO tab only (as JSON for pastText).
+// Done files are newest-first scanned; a 4th matching day tells there is more (older).
 async function pastDays($: any) {
   const names: { name: string }[] = await $.fs.list(`${dir}/todo/done`).catch(() => [])
   const t = today()
   const all = names.map(n => n.name).filter(n => /^\d{4}-\d{2}-\d{2}\.md$/.test(n) && n.slice(0, 10) < t).sort().reverse()
   const days: PastDay[] = []
-  for (const n of all.slice(0, 3)) {
+  let older = false
+  for (const n of all) {
     const path = `${dir}/todo/done/${n}`
-    const items = String(await $.fs.read(path).catch(() => '')).split('\n').filter(l => l.startsWith('- [x]'))
-    if (items.length) days.push({ date: n.slice(0, 10), items, path })
+    const items = sessionItems(String(await $.fs.read(path).catch(() => '')), sessionId)
+    if (!items.length) continue
+    if (days.length === 3) {
+      older = true
+      break
+    }
+    days.push({ date: n.slice(0, 10), items, path })
   }
-  return JSON.stringify({ days, older: all.length > 3 })
+  return JSON.stringify({ days, older })
 }
 
 // What a pane command does: not open -> open it in front; open but behind another tab -> bring it forward; in front -> close.
@@ -788,10 +812,17 @@ export const register: Register = (on, options) => {
     const rows = Number((e.props as any)?.scroll?.bodyRows)
     let past = { days: [] as PastDay[], older: false }
     try { past = JSON.parse((await read($, pastText)) || 'null') ?? past } catch {}
-    const text = body ? todo + pastDaysBlock(past.days, past.older, `${dir}/todo/done/`, rowsOf(todo, cols, wrap), rows, cols, wrap, lang) : todo
+    // The block starts "\n\n---"; the blank row between the parts becomes marginTop, and the block is drawn faint.
+    const block = body ? pastDaysBlock(past.days, past.older, `${dir}/todo/done/`, rowsOf(todo, cols, wrap), rows, cols, wrap, lang) : ''
+    const cut = (x: string) => (wrap || !(cols > 0) ? x : truncateForWidth(x, cols))
     return (
       <Box flexDirection="column">
-        <Markdown text={wrap || !(cols > 0) ? text : truncateForWidth(text, cols)} />
+        <Markdown text={cut(todo)} />
+        {block && (
+          <Box marginTop={1}>
+            <Markdown dimColor text={cut(block.replace(/^\n+/, ''))} />
+          </Box>
+        )}
       </Box>
     )
   })
