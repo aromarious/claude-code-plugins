@@ -1,5 +1,5 @@
 import { test, expect } from 'claude-code/testing'
-import { isWrite, baseName, sanitize, pathsFor, lastTitle, rollover, dropExisting, pastDaysBlock, rowsOf, paneAction, truncateForWidth, displayWidth, wrapTarget, fitTable, markEmptySections, numberSubsections } from './register'
+import { isWrite, baseName, sanitize, pathsFor, lastTitle, rollover, dropExisting, pastDaysBlock, sessionItems, rowsOf, paneAction, truncateForWidth, displayWidth, wrapTarget, fitTable, markEmptySections, numberSubsections } from './register'
 
 const NOW = '.claude/todo/a-123456.md'
 const OFF = '.claude/todo/a-123456.off'
@@ -296,4 +296,25 @@ test('numberSubsections: ### before any ## is unchanged', () => {
 test('numberSubsections: fenced code is ignored and nothing after --- changes', () => {
   const t = '## A\n```\n### no\n```\n### x\n\n---\n\n## P\n### y'
   expect(numberSubsections(t)).toBe('## A\n```\n### no\n```\n### A-1. x\n\n---\n\n## P\n### y')
+})
+
+const ID = 'abcdef12-3456-7890-abcd-ef1234567890'
+test('sessionItems: named label matches by id first 6, other sessions are excluded', () => {
+  const t = '# Done on 2026-10-01\n\n## Session foo-abcdef\n\n- [x] mine\n- [ ] open\n\n## Session bar-123456\n\n- [x] theirs\n'
+  expect(sessionItems(t, ID)).toEqual(['- [x] mine'])
+})
+test('sessionItems: unnamed label is the id first 8', () => {
+  const t = '## Session abcdef12\n\n- [x] a\n\n## Session abcdef99\n\n- [x] b\n'
+  expect(sessionItems(t, ID)).toEqual(['- [x] a'])
+})
+test('sessionItems: renamed session has two sections, all taken in file order', () => {
+  const t = '## Session abcdef12\n- [x] a\n## Session other-111111\n- [x] x\n## Session new-name-abcdef\n- [x] b\n'
+  expect(sessionItems(t, ID)).toEqual(['- [x] a', '- [x] b'])
+})
+test('sessionItems: Japanese and other-language headings, other ## headings end a section', () => {
+  const t = '## セッション my-abcdef\n- [x] j\n## Sesión abcdef12\n- [x] s\n## Notes\n- [x] not mine\n'
+  expect(sessionItems(t, ID)).toEqual(['- [x] j', '- [x] s'])
+})
+test('sessionItems: a label that only contains the id is not a match', () => {
+  expect(sessionItems('## Session xabcdef12\n- [x] a\n## Session abcdef-zzzzzz\n- [x] b\n', ID)).toEqual([])
 })
