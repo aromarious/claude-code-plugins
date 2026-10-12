@@ -288,41 +288,111 @@ const LIST_RE = /^(\s*(?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s+)?)/
 const HEADING_RE = /^(#{1,6}\s+)/
 const MARGIN = 2
 
+// Cuts `s` to at most `budget` display columns, ending with "…" (so budget-1 columns of text).
+const cutTo = (s: string, budget: number) => {
+  let cut = ''
+  let w = 0
+  for (const ch of s) {
+    const cw = isWide(ch.codePointAt(0)!) ? 2 : 1
+    if (w + cw > budget - 1) break
+    cut += ch
+    w += cw
+  }
+  // No half-open link or code span: either would swallow what follows.
+  const lb = cut.lastIndexOf('[')
+  if (lb >= 0 && !/\]\([^)]*\)/.test(cut.slice(lb))) cut = cut.slice(0, lb)
+  if ((cut.match(/`/g) ?? []).length % 2) cut = cut.slice(0, cut.lastIndexOf('`'))
+  return cut.replace(/\\$/, '') + '…'
+}
+
+// Splits a table row into trimmed cells on unescaped "|"; a "|" inside a backtick span stays in its cell.
+// ponytail: GFM itself splits inside code spans unless the pipe is escaped; we keep the span whole instead.
+const splitRow = (line: string): string[] => {
+  let t = line.trim()
+  if (t.startsWith('|')) t = t.slice(1)
+  if (t.endsWith('|') && !t.endsWith('\\|')) t = t.slice(0, -1)
+  const cells: string[] = []
+  let cur = ''
+  let code = false
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i]
+    if (c === '\\' && i + 1 < t.length) {
+      cur += c + t[++i]
+      continue
+    }
+    if (c === '`') code = !code
+    if (c === '|' && !code) {
+      cells.push(cur.trim())
+      cur = ''
+    } else cur += c
+  }
+  cells.push(cur.trim())
+  return cells
+}
+const isDelimiter = (cells: string[]) => cells.length > 0 && cells.every(c => /^:?-+:?$/.test(c))
+
+// Rendered width is sum(column widths) + 3 per column + 1 ("│ a │ b │"), kept MARGIN columns short of the pane.
+const TABLE_MIN = 3
+
+// Shrinks a GFM table (header, delimiter row, body rows) so it fits `columns`: the widest column loses a column
+// at a time, then cells wider than their column are cut with "…". Not a table (no valid delimiter row): unchanged.
+export const fitTable = (lines: string[], columns: number): string[] => {
+  if (lines.length < 2) return lines
+  const rows = lines.map(splitRow)
+  if (!isDelimiter(rows[1])) return lines
+  const n = Math.max(...rows.map(r => r.length))
+  const widths = Array.from({ length: n }, (_, i) =>
+    Math.max(1, ...rows.map((r, k) => (k === 1 ? 1 : displayWidth(r[i] ?? '')))))
+  const mins = widths.map((_, i) => Math.min(TABLE_MIN, displayWidth(rows[0][i] ?? '') || 1))
+  const total = () => widths.reduce((a, b) => a + b, 0) + 3 * n + 1
+  const avail = columns - MARGIN
+  while (total() > avail) {
+    let k = -1
+    for (let i = 0; i < n; i++) if (widths[i] > mins[i] && (k < 0 || widths[i] > widths[k])) k = i
+    if (k < 0) break
+    widths[k]--
+  }
+  return rows.map((r, k) => {
+    if (k === 1) return lines[1]
+    const cells = r.map((c, i) => (displayWidth(c) > widths[i] ? cutTo(c, widths[i]) : c))
+    return `| ${cells.join(' | ')} |`
+  })
+}
+
 // Cuts each over-long line to `columns` display columns and ends it with "…", so the Markdown element
-// never wraps it. Display only. Blank lines, fenced code and table rows are left alone.
+// never wraps it. Table rows are fitted as a block by fitTable. Display only. Blank lines and fenced code are left alone.
 export const truncateForWidth = (markdown: string, columns: number): string => {
   let fence = false
-  return markdown
-    .split('\n')
-    .map(line => {
-      const t = line.trimStart()
-      if (/^(```|~~~)/.test(t)) {
-        fence = !fence
-        return line
-      }
-      if (fence || !t || t.startsWith('|')) return line
-      const list = line.match(LIST_RE)?.[1]
-      const heading = list ? undefined : line.match(HEADING_RE)?.[1]
-      const head = list ?? heading ?? ''
-      const rest = line.slice(head.length)
-      // A heading's # marks are not drawn; a list marker is drawn about as wide as its source.
-      const budget = columns - MARGIN - (heading ? 0 : displayWidth(head))
-      if (budget < 4 || displayWidth(rest) <= budget) return line
-      let cut = ''
-      let w = 0
-      for (const ch of rest) {
-        const cw = isWide(ch.codePointAt(0)!) ? 2 : 1
-        if (w + cw > budget - 1) break
-        cut += ch
-        w += cw
-      }
-      // No half-open link or code span: either would swallow what follows.
-      const lb = cut.lastIndexOf('[')
-      if (lb >= 0 && !/\]\([^)]*\)/.test(cut.slice(lb))) cut = cut.slice(0, lb)
-      if ((cut.match(/`/g) ?? []).length % 2) cut = cut.slice(0, cut.lastIndexOf('`'))
-      return head + cut + '…'
-    })
-    .join('\n')
+  const out: string[] = []
+  const lines = markdown.split('\n')
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    const t = line.trimStart()
+    if (/^(```|~~~)/.test(t)) {
+      fence = !fence
+      out.push(line)
+      continue
+    }
+    if (fence || !t) {
+      out.push(line)
+      continue
+    }
+    if (t.startsWith('|')) {
+      let j = i
+      while (j < lines.length && lines[j].trimStart().startsWith('|')) j++
+      out.push(...fitTable(lines.slice(i, j), columns))
+      i = j - 1
+      continue
+    }
+    const list = line.match(LIST_RE)?.[1]
+    const heading = list ? undefined : line.match(HEADING_RE)?.[1]
+    const head = list ?? heading ?? ''
+    const rest = line.slice(head.length)
+    // A heading's # marks are not drawn; a list marker is drawn about as wide as its source.
+    const budget = columns - MARGIN - (heading ? 0 : displayWidth(head))
+    out.push(budget < 4 || displayWidth(rest) <= budget ? line : head + cutTo(rest, budget))
+  }
+  return out.join('\n')
 }
 
 const NOW_PANE = 'todo-pane'
