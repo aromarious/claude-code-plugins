@@ -115,7 +115,7 @@ The date in the todo file's "## Done (YYYY-MM-DD)" heading (in Japanese, "## や
 
 Under the TODO tab, a divider follows the todo file, then the completed items of the most recent earlier day, up to the last 5. If there are more than 5, a line "…and N more" with the location of the source file is added. This is display only; it is not written to the todo file.
 
-A "## " section with nothing under it is shown with an italic "(none)" below its heading (in Japanese, "（なし）"). This is display only too; the todo file is not changed.
+A "## " section with nothing under it is shown with an italic "(none)" below its heading (in Japanese, "（なし）"). This is display only too; the todo file is not changed. "###" sub-headings are shown prefixed with their parent heading and a number (e.g. "待ち-1."), and an empty sub-heading gets the label too.
 
 `/todo-pane-wrap` acts on the tab in front, and each tab remembers its own setting. The TODO tab starts out cutting long lines with "…" to fit the pane's current width instead of wrapping, and the cut is recomputed when the width changes. The Pins tab starts out wrapping; when it is switched to cutting, tables are fitted too, by shortening the cells of the widest columns with "…" (wrap mode shows them in full), and code blocks are left whole. The todo and pin files keep the full text.
 

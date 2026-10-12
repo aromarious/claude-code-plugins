@@ -406,40 +406,64 @@ export const truncateForWidth = (markdown: string, columns: number): string => {
   return out.join('\n')
 }
 
-// Display only: puts `label` (italic, the closest Markdown has to dim) under each "## " heading with no content
-// before the next "## " heading or the end of the todo part. Stops at the "---" rule that starts the previous-day
-// block; fenced code is skipped. The todo file itself is never changed.
+// Display only: puts `label` (italic, the closest Markdown has to dim) under each "##" to "######" heading that has
+// no content before the next heading of the same or higher level (same or fewer #), the "---" rule that starts the
+// previous-day block, or the end of the todo part. A heading followed by a deeper one (e.g. "###" under "##") is not
+// empty. Fenced code is skipped. The todo file itself is never changed.
 export const markEmptySections = (text: string, label: string): string => {
   const lines = text.split('\n')
   const out: string[] = []
   let fence = false
-  let open = false // inside a "## " section that has had no content yet
+  let open = 0 // level of the heading that has had no content yet (0 = none)
+  let mark = 0
   const close = () => {
     if (open) out.splice(mark, 0, `_${label}_`)
-    open = false
+    open = 0
   }
-  let mark = 0
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
     const t = line.trimStart()
+    const level = fence ? 0 : (line.match(/^(#{2,6})\s/)?.[1].length ?? 0)
     if (/^(```|~~~)/.test(t)) {
       fence = !fence
-      open = false
+      open = 0
     } else if (!fence && /^---+\s*$/.test(line)) {
       close()
       out.push(...lines.slice(i))
       return out.join('\n')
-    } else if (!fence && line.startsWith('## ')) {
-      close()
+    } else if (level) {
+      if (level <= open) close()
+      else open = 0
       out.push(line)
-      open = true
+      open = level
       mark = out.length
       continue
-    } else if (t) open = false
+    } else if (t) open = 0
     out.push(line)
   }
   close()
   return out.join('\n')
+}
+
+// Display only: in the todo part, rewrites each "### " heading under a "## " heading to
+// "### <parent>-<n>. <title>" (n restarts at each "## "), since "##" to "####" all look alike when drawn.
+// Fenced code is skipped; everything from the "---" rule on is passed through unchanged.
+export const numberSubsections = (text: string): string => {
+  const lines = text.split('\n')
+  let fence = false
+  let parent = ''
+  let n = 0
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    if (/^(```|~~~)/.test(line.trimStart())) fence = !fence
+    else if (fence) continue
+    else if (/^---+\s*$/.test(line)) break
+    else if (line.startsWith('## ')) {
+      parent = line.slice(3).trim()
+      n = 0
+    } else if (parent && line.startsWith('### ')) lines[i] = `### ${parent}-${++n}. ${line.slice(4)}`
+  }
+  return lines.join('\n')
 }
 
 const NOW_PANE = 'todo-pane'
@@ -690,7 +714,7 @@ export const register: Register = (on, options) => {
     const body = await read($, nowText)
     // Width of this draw; the engine redraws when it changes. Without one, nothing is cut.
     const cols = Number((e.props as any)?.bodyColumns)
-    const text = body ? markEmptySections(body, L[lang].empty) : L[lang].emptyTodo
+    const text = body ? markEmptySections(numberSubsections(body), L[lang].empty) : L[lang].emptyTodo
     const wrap = await read($, wrapOn)
     return (
       <Box flexDirection="column">

@@ -1,5 +1,5 @@
 import { test, expect } from 'claude-code/testing'
-import { isWrite, baseName, sanitize, pathsFor, lastTitle, hasDoneToday, paneAction, truncateForWidth, displayWidth, wrapTarget, fitTable, markEmptySections } from './register'
+import { isWrite, baseName, sanitize, pathsFor, lastTitle, hasDoneToday, paneAction, truncateForWidth, displayWidth, wrapTarget, fitTable, markEmptySections, numberSubsections } from './register'
 
 const NOW = '.claude/todo/a-123456.md'
 const OFF = '.claude/todo/a-123456.off'
@@ -211,4 +211,26 @@ test('markEmptySections: previous-day block after --- is not part of the last se
   expect(mark(t)).toBe('## A\n- [ ] a\n\n## B\n_(none)_\n\n---\n\n#### Previous day (2026-10-11)\n\n- [x] y')
   const u = '## A\n- [ ] a\n\n---\n\n## fake\n'
   expect(mark(u)).toBe(u)
+})
+
+test('markEmptySections: empty ### gets the label, ## with only ### children does not', () => {
+  expect(mark('## A\n### a1\n- [ ] x\n### a2\n\n## B\n- [ ] b')).toBe('## A\n### a1\n- [ ] x\n### a2\n_(none)_\n\n## B\n- [ ] b')
+})
+
+test('markEmptySections: empty ### followed by ## gets the label, and so does the last ### at the end', () => {
+  expect(mark('## A\n### a1\n## B\n- [ ] b\n### b1')).toBe('## A\n### a1\n_(none)_\n## B\n- [ ] b\n### b1\n_(none)_')
+})
+
+test('numberSubsections: numbers ### under the nearest ## and restarts at each ##', () => {
+  expect(numberSubsections('## 待ち\n### 同期が届いたら\n- [ ] a\n### 日付')).toBe('## 待ち\n### 待ち-1. 同期が届いたら\n- [ ] a\n### 待ち-2. 日付')
+  expect(numberSubsections('## A\n### x\n## B\n### y\n#### deep')).toBe('## A\n### A-1. x\n## B\n### B-1. y\n#### deep')
+})
+
+test('numberSubsections: ### before any ## is unchanged', () => {
+  expect(numberSubsections('### lone\n## A\n### x')).toBe('### lone\n## A\n### A-1. x')
+})
+
+test('numberSubsections: fenced code is ignored and nothing after --- changes', () => {
+  const t = '## A\n```\n### no\n```\n### x\n\n---\n\n## P\n### y'
+  expect(numberSubsections(t)).toBe('## A\n```\n### no\n```\n### A-1. x\n\n---\n\n## P\n### y')
 })
