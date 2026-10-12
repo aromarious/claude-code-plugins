@@ -49,6 +49,7 @@ export const L = {
     pinTitle: 'ピン留め',
     emptyTodo: '（TODO はまだありません）',
     emptyPin: '（ピン留めはまだありません）',
+    empty: '（なし）',
     prevDay: (d: string) => `#### 前の日（${d}）`,
     more: (n: number, path: string) => `…ほか ${n} 件（${path}）`,
     doneTitle: (d: string) => `# ${d} にやったこと`,
@@ -63,6 +64,7 @@ export const L = {
     pinTitle: 'Pins',
     emptyTodo: '(No TODO yet)',
     emptyPin: '(Nothing pinned yet)',
+    empty: '(none)',
     prevDay: (d: string) => `#### Previous day (${d})`,
     more: (n: number, path: string) => `…and ${n} more (${path})`,
     doneTitle: (d: string) => `# Done on ${d}`,
@@ -77,6 +79,7 @@ export const L = {
     pinTitle: '固定',
     emptyTodo: '（暂无 TODO）',
     emptyPin: '（暂无固定内容）',
+    empty: '（无）',
     prevDay: (d: string) => `#### 前一天（${d}）`,
     more: (n: number, path: string) => `…另有 ${n} 项（${path}）`,
     doneTitle: (d: string) => `# ${d} 已完成事项`,
@@ -91,6 +94,7 @@ export const L = {
     pinTitle: '釘選',
     emptyTodo: '（尚無 TODO）',
     emptyPin: '（尚無釘選內容）',
+    empty: '（無）',
     prevDay: (d: string) => `#### 前一天（${d}）`,
     more: (n: number, path: string) => `…另有 ${n} 項（${path}）`,
     doneTitle: (d: string) => `# ${d} 已完成事項`,
@@ -105,6 +109,7 @@ export const L = {
     pinTitle: '고정',
     emptyTodo: '(TODO가 아직 없습니다)',
     emptyPin: '(고정된 항목이 없습니다)',
+    empty: '(없음)',
     prevDay: (d: string) => `#### 전날 (${d})`,
     more: (n: number, path: string) => `…외 ${n}건 (${path})`,
     doneTitle: (d: string) => `# ${d} 완료한 일`,
@@ -119,6 +124,7 @@ export const L = {
     pinTitle: 'Fijados',
     emptyTodo: '(Aún no hay TODO)',
     emptyPin: '(Nada fijado todavía)',
+    empty: '(nada)',
     prevDay: (d: string) => `#### Día anterior (${d})`,
     more: (n: number, path: string) => `…y ${n} más (${path})`,
     doneTitle: (d: string) => `# Hecho el ${d}`,
@@ -133,6 +139,7 @@ export const L = {
     pinTitle: 'Épinglés',
     emptyTodo: '(Aucun TODO pour l’instant)',
     emptyPin: '(Rien d’épinglé pour l’instant)',
+    empty: '(rien)',
     prevDay: (d: string) => `#### Jour précédent (${d})`,
     more: (n: number, path: string) => `…et ${n} de plus (${path})`,
     doneTitle: (d: string) => `# Terminé le ${d}`,
@@ -147,6 +154,7 @@ export const L = {
     pinTitle: 'Angepinnt',
     emptyTodo: '(Noch keine TODOs)',
     emptyPin: '(Noch nichts angepinnt)',
+    empty: '(nichts)',
     prevDay: (d: string) => `#### Vorheriger Tag (${d})`,
     more: (n: number, path: string) => `…und ${n} weitere (${path})`,
     doneTitle: (d: string) => `# Erledigt am ${d}`,
@@ -161,6 +169,7 @@ export const L = {
     pinTitle: 'Fixados',
     emptyTodo: '(Nenhum TODO ainda)',
     emptyPin: '(Nada fixado ainda)',
+    empty: '(nada)',
     prevDay: (d: string) => `#### Dia anterior (${d})`,
     more: (n: number, path: string) => `…e mais ${n} (${path})`,
     doneTitle: (d: string) => `# Concluído em ${d}`,
@@ -175,6 +184,7 @@ export const L = {
     pinTitle: 'Fissati',
     emptyTodo: '(Nessun TODO per ora)',
     emptyPin: '(Nulla di fissato per ora)',
+    empty: '(niente)',
     prevDay: (d: string) => `#### Giorno precedente (${d})`,
     more: (n: number, path: string) => `…e altri ${n} (${path})`,
     doneTitle: (d: string) => `# Fatto il ${d}`,
@@ -189,6 +199,7 @@ export const L = {
     pinTitle: 'Закреплено',
     emptyTodo: '(TODO пока нет)',
     emptyPin: '(Ничего не закреплено)',
+    empty: '(нет)',
     prevDay: (d: string) => `#### Предыдущий день (${d})`,
     more: (n: number, path: string) => `…и ещё ${n} (${path})`,
     doneTitle: (d: string) => `# Сделано за ${d}`,
@@ -392,6 +403,42 @@ export const truncateForWidth = (markdown: string, columns: number): string => {
     const budget = columns - MARGIN - (heading ? 0 : displayWidth(head))
     out.push(budget < 4 || displayWidth(rest) <= budget ? line : head + cutTo(rest, budget))
   }
+  return out.join('\n')
+}
+
+// Display only: puts `label` (italic, the closest Markdown has to dim) under each "## " heading with no content
+// before the next "## " heading or the end of the todo part. Stops at the "---" rule that starts the previous-day
+// block; fenced code is skipped. The todo file itself is never changed.
+export const markEmptySections = (text: string, label: string): string => {
+  const lines = text.split('\n')
+  const out: string[] = []
+  let fence = false
+  let open = false // inside a "## " section that has had no content yet
+  const close = () => {
+    if (open) out.splice(mark, 0, `_${label}_`)
+    open = false
+  }
+  let mark = 0
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    const t = line.trimStart()
+    if (/^(```|~~~)/.test(t)) {
+      fence = !fence
+      open = false
+    } else if (!fence && /^---+\s*$/.test(line)) {
+      close()
+      out.push(...lines.slice(i))
+      return out.join('\n')
+    } else if (!fence && line.startsWith('## ')) {
+      close()
+      out.push(line)
+      open = true
+      mark = out.length
+      continue
+    } else if (t) open = false
+    out.push(line)
+  }
+  close()
   return out.join('\n')
 }
 
@@ -643,7 +690,7 @@ export const register: Register = (on, options) => {
     const body = await read($, nowText)
     // Width of this draw; the engine redraws when it changes. Without one, nothing is cut.
     const cols = Number((e.props as any)?.bodyColumns)
-    const text = body || L[lang].emptyTodo
+    const text = body ? markEmptySections(body, L[lang].empty) : L[lang].emptyTodo
     const wrap = await read($, wrapOn)
     return (
       <Box flexDirection="column">

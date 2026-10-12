@@ -1,5 +1,5 @@
 import { test, expect } from 'claude-code/testing'
-import { isWrite, baseName, sanitize, pathsFor, lastTitle, hasDoneToday, paneAction, truncateForWidth, displayWidth, wrapTarget, fitTable } from './register'
+import { isWrite, baseName, sanitize, pathsFor, lastTitle, hasDoneToday, paneAction, truncateForWidth, displayWidth, wrapTarget, fitTable, markEmptySections } from './register'
 
 const NOW = '.claude/todo/a-123456.md'
 const OFF = '.claude/todo/a-123456.off'
@@ -184,4 +184,31 @@ test('truncateForWidth: fits tables inside text and leaves tables in code fences
   expect(out[4]).toBe('after')
   const fenced = ['```', ...tbl, '```'].join('\n')
   expect(truncateForWidth(fenced, 30)).toBe(fenced)
+})
+
+const E = '(none)'
+const mark = (s: string) => markEmptySections(s, E)
+
+test('markEmptySections: empty section gets the label, section with items does not', () => {
+  expect(mark('## 今\n\n## 次\n\n- [ ] a\n')).toBe('## 今\n_(none)_\n\n## 次\n\n- [ ] a\n')
+})
+
+test('markEmptySections: last section empty at end of text, and consecutive empty sections', () => {
+  expect(mark('## A\n## B\n\n## C')).toBe('## A\n_(none)_\n## B\n_(none)_\n\n## C\n_(none)_')
+})
+
+test('markEmptySections: blank lines only count as empty', () => {
+  expect(mark('## A\n   \n\n## B\n- [x] x')).toBe('## A\n_(none)_\n   \n\n## B\n- [x] x')
+})
+
+test('markEmptySections: headings and rules inside fenced code are ignored', () => {
+  const t = '## A\n\n```\n## not a heading\n---\n```\n\n## B\n- [ ] b'
+  expect(mark(t)).toBe(t)
+})
+
+test('markEmptySections: previous-day block after --- is not part of the last section', () => {
+  const t = '## A\n- [ ] a\n\n## B\n\n---\n\n#### Previous day (2026-10-11)\n\n- [x] y'
+  expect(mark(t)).toBe('## A\n- [ ] a\n\n## B\n_(none)_\n\n---\n\n#### Previous day (2026-10-11)\n\n- [x] y')
+  const u = '## A\n- [ ] a\n\n---\n\n## fake\n'
+  expect(mark(u)).toBe(u)
 })
