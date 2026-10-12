@@ -333,6 +333,8 @@ const nowText = atom({ plugin: 'todo-pane', key: 'text' } as const, '')
 const pinText = atom({ plugin: 'todo-pane', key: 'pin' } as const, '')
 // true: long TODO lines wrap; false (default): they are cut with "…". Saved with $.store so it outlives the session.
 const wrapOn = atom({ plugin: 'todo-pane', key: 'wrap' } as const, false)
+// Same for the pins pane, which defaults to wrapping.
+const pinWrapOn = atom({ plugin: 'todo-pane', key: 'pinWrap' } as const, true)
 
 // Sent to the model every turn, so the board stays current without relying on memory.
 const rule = (f: string, lang: Lang) => [
@@ -437,6 +439,12 @@ async function stateOf($: any, id: string) {
   return { isOpen: !!pane?.isPlaced, isFront: !!pane?.isShown }
 }
 
+// Which of this plugin's panes /todo-pane-wrap acts on: the one the dock is showing; undefined when neither is.
+export const wrapTarget = (panes: readonly { id: string; isShown: boolean }[]): 'todo' | 'pin' | undefined => {
+  const shown = panes.find(x => x.isShown && (x.id === NOW_PANE || x.id === PIN_PANE))?.id
+  return shown === NOW_PANE ? 'todo' : shown === PIN_PANE ? 'pin' : undefined
+}
+
 export const register: Register = (on, options) => {
   dir = dirFrom(options)
   p = pathsFor(dir, base)
@@ -444,6 +452,7 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     await sync($)
     const savedWrap = (await $.store.get('wrap').catch(() => undefined)) === true
+    const savedPinWrap = (await $.store.get('pinWrap').catch(() => undefined)) !== false
     const refresh = async () => {
       await sync($).catch(() => {})
       await archiveIfNeeded($).catch(() => {})
@@ -455,6 +464,7 @@ export const register: Register = (on, options) => {
       return pin
     }
     await update($, wrapOn, () => savedWrap)
+    await update($, pinWrapOn, () => savedPinWrap)
     const pin = await refresh()
     // ponytail: polls every 3s; a file watch would be nicer if the API grows one
     $.clock.every(3000, () => void refresh())
@@ -462,7 +472,7 @@ export const register: Register = (on, options) => {
     // The pin board opens at start only when this session's file exists; /todo-pane-pinboard opens it later.
     if (pin) void openPane($, PIN_PANE, L[lang].pinTitle)
     // Last, and each guarded: a taken name must not stop the panes or the timer above.
-    for (const [name, description] of [['todo-pane', 'Open, bring forward, or close the TODO pane'], ['todo-pane-pinboard', 'Open, bring forward, or close the pinboard pane'], ['todo-pane-wrap', 'Toggle wrapping long lines in the TODO pane']])
+    for (const [name, description] of [['todo-pane', 'Open, bring forward, or close the TODO pane'], ['todo-pane-pinboard', 'Open, bring forward, or close the pinboard pane'], ['todo-pane-wrap', 'Toggle wrapping long lines in the pane in front']])
       try { await $.command.register({ name, description }) } catch (err) { $.ui.log(`command ${name} not registered: ${err}`, { to: 'debug' }) }
 
     return next(e)
@@ -540,10 +550,13 @@ export const register: Register = (on, options) => {
   })
 
   on('command.run', { command: 'todo-pane-wrap' }, async $ => {
-    const v = !(await read($, wrapOn))
-    await update($, wrapOn, () => v)
-    await $.store.set('wrap', v).catch(() => {})
-    return { text: v ? 'Wrap on.' : 'Wrap off (truncate).' }
+    const target = wrapTarget(await $.ui.panes().catch(() => []))
+    if (!target) return { text: 'No todo-pane pane is shown.' }
+    const v = target === 'todo' ? !(await read($, wrapOn)) : !(await read($, pinWrapOn))
+    if (target === 'todo') await update($, wrapOn, () => v)
+    else await update($, pinWrapOn, () => v)
+    await $.store.set(target === 'todo' ? 'wrap' : 'pinWrap', v).catch(() => {})
+    return { text: `${target === 'todo' ? 'TODO' : 'Pins'}: ${v ? 'wrap on.' : 'wrap off (truncate).'}` }
   })
 
   // The pin skill: tell it the concrete file and show the pins pane.
@@ -572,9 +585,12 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'Pane', requestId: PIN_PANE }, async ($, e) => {
     const { Box, Markdown } = $.ui.resolve(e)
     const body = await read($, pinText)
+    const cols = Number((e.props as any)?.bodyColumns)
+    const text = body || L[lang].emptyPin
+    const wrap = await read($, pinWrapOn)
     return (
       <Box flexDirection="column">
-        <Markdown text={body || L[lang].emptyPin} />
+        <Markdown text={wrap || !(cols > 0) ? text : truncateForWidth(text, cols)} />
       </Box>
     )
   })

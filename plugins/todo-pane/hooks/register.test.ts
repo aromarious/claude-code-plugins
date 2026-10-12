@@ -1,5 +1,5 @@
 import { test, expect } from 'claude-code/testing'
-import { isWrite, baseName, sanitize, pathsFor, lastTitle, hasDoneToday, paneAction, truncateForWidth, displayWidth } from './register'
+import { isWrite, baseName, sanitize, pathsFor, lastTitle, hasDoneToday, paneAction, truncateForWidth, displayWidth, wrapTarget } from './register'
 
 const NOW = '.claude/todo/a-123456.md'
 const OFF = '.claude/todo/a-123456.off'
@@ -123,4 +123,11 @@ test('truncateForWidth: never leaves an open code span or link', () => {
   const link = truncateForWidth('- see [' + 'doc'.repeat(20) + '](https://example.com/very/long) end', 40)
   expect(link).not.toContain('[')
   expect(link.endsWith('…')).toBe(true)
+})
+
+test('wrapTarget: the shown pane of ours decides, else nothing', () => {
+  expect(wrapTarget([{ id: 'todo-pane', isShown: true }, { id: 'pin-board', isShown: false }])).toBe('todo')
+  expect(wrapTarget([{ id: 'todo-pane', isShown: false }, { id: 'pin-board', isShown: true }])).toBe('pin')
+  expect(wrapTarget([{ id: 'todo-pane', isShown: false }, { id: 'pin-board', isShown: false }])).toBeUndefined()
+  expect(wrapTarget([])).toBeUndefined()
 })

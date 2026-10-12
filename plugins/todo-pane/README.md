@@ -37,7 +37,7 @@ Right after installing, a "Configure todo-pane" screen appears. Skip it without 
 |---|---|---|
 | `/todo-pane` | Mod command | Opens the TODO pane, or closes it if it is open. Opening creates the todo file if it is missing |
 | `/todo-pane-pinboard` | Mod command | Opens the Pins pane, or closes it if it is open |
-| `/todo-pane-wrap` | Mod command | Switches long lines in the TODO pane between being cut with "…" (default) and wrapping onto the next row. The choice is kept across sessions |
+| `/todo-pane-wrap` | Mod command | Switches long lines in the tab in front between being cut with "…" and wrapping onto the next row. Each tab keeps its own choice across sessions; TODO starts cut, Pins start wrapped. With neither tab in front it does nothing |
 | `/todo-pane:pin [what to pin]` | Skill | Pins the main content of Claude's last reply. With text after it, pins what the text describes |
 
 The ✕ button at the top right of a pane also closes it. Run the command again to reopen it.
@@ -115,7 +115,7 @@ The date in the todo file's "## Done (YYYY-MM-DD)" heading (in Japanese, "## や
 
 Under the TODO tab, a divider follows the todo file, then the completed items of the most recent earlier day, up to the last 5. If there are more than 5, a line "…and N more" with the location of the source file is added. This is display only; it is not written to the todo file.
 
-Long lines in the TODO tab are cut with "…" to fit the pane's current width instead of wrapping, and the cut is recomputed when the width changes. The todo file keeps the full text, and the Pins tab still wraps.
+`/todo-pane-wrap` acts on the tab in front, and each tab remembers its own setting. The TODO tab starts out cutting long lines with "…" to fit the pane's current width instead of wrapping, and the cut is recomputed when the width changes. The Pins tab starts out wrapping; when it is switched to cutting, tables and code blocks are left whole. The todo and pin files keep the full text.
 
 ## Settings
 
