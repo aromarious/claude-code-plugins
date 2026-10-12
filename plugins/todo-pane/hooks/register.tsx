@@ -50,7 +50,7 @@ export const L = {
     emptyTodo: '（TODO はまだありません）',
     emptyPin: '（ピン留めはまだありません）',
     empty: '（なし）',
-    prevDay: (d: string) => `#### 前の日（${d}）`,
+    older: (path: string) => `それより前: ${path}`,
     more: (n: number, path: string) => `…ほか ${n} 件（${path}）`,
     doneTitle: (d: string) => `# ${d} にやったこと`,
     session: (label: string) => `## セッション ${label}`,
@@ -65,7 +65,7 @@ export const L = {
     emptyTodo: '(No TODO yet)',
     emptyPin: '(Nothing pinned yet)',
     empty: '(none)',
-    prevDay: (d: string) => `#### Previous day (${d})`,
+    older: (path: string) => `Earlier: ${path}`,
     more: (n: number, path: string) => `…and ${n} more (${path})`,
     doneTitle: (d: string) => `# Done on ${d}`,
     session: (label: string) => `## Session ${label}`,
@@ -80,7 +80,7 @@ export const L = {
     emptyTodo: '（暂无 TODO）',
     emptyPin: '（暂无固定内容）',
     empty: '（无）',
-    prevDay: (d: string) => `#### 前一天（${d}）`,
+    older: (path: string) => `更早: ${path}`,
     more: (n: number, path: string) => `…另有 ${n} 项（${path}）`,
     doneTitle: (d: string) => `# ${d} 已完成事项`,
     session: (label: string) => `## 会话 ${label}`,
@@ -95,7 +95,7 @@ export const L = {
     emptyTodo: '（尚無 TODO）',
     emptyPin: '（尚無釘選內容）',
     empty: '（無）',
-    prevDay: (d: string) => `#### 前一天（${d}）`,
+    older: (path: string) => `更早: ${path}`,
     more: (n: number, path: string) => `…另有 ${n} 項（${path}）`,
     doneTitle: (d: string) => `# ${d} 已完成事項`,
     session: (label: string) => `## 工作階段 ${label}`,
@@ -110,7 +110,7 @@ export const L = {
     emptyTodo: '(TODO가 아직 없습니다)',
     emptyPin: '(고정된 항목이 없습니다)',
     empty: '(없음)',
-    prevDay: (d: string) => `#### 전날 (${d})`,
+    older: (path: string) => `이전: ${path}`,
     more: (n: number, path: string) => `…외 ${n}건 (${path})`,
     doneTitle: (d: string) => `# ${d} 완료한 일`,
     session: (label: string) => `## 세션 ${label}`,
@@ -125,7 +125,7 @@ export const L = {
     emptyTodo: '(Aún no hay TODO)',
     emptyPin: '(Nada fijado todavía)',
     empty: '(nada)',
-    prevDay: (d: string) => `#### Día anterior (${d})`,
+    older: (path: string) => `Anteriores: ${path}`,
     more: (n: number, path: string) => `…y ${n} más (${path})`,
     doneTitle: (d: string) => `# Hecho el ${d}`,
     session: (label: string) => `## Sesión ${label}`,
@@ -140,7 +140,7 @@ export const L = {
     emptyTodo: '(Aucun TODO pour l’instant)',
     emptyPin: '(Rien d’épinglé pour l’instant)',
     empty: '(rien)',
-    prevDay: (d: string) => `#### Jour précédent (${d})`,
+    older: (path: string) => `Plus ancien : ${path}`,
     more: (n: number, path: string) => `…et ${n} de plus (${path})`,
     doneTitle: (d: string) => `# Terminé le ${d}`,
     session: (label: string) => `## Session ${label}`,
@@ -155,7 +155,7 @@ export const L = {
     emptyTodo: '(Noch keine TODOs)',
     emptyPin: '(Noch nichts angepinnt)',
     empty: '(nichts)',
-    prevDay: (d: string) => `#### Vorheriger Tag (${d})`,
+    older: (path: string) => `Früher: ${path}`,
     more: (n: number, path: string) => `…und ${n} weitere (${path})`,
     doneTitle: (d: string) => `# Erledigt am ${d}`,
     session: (label: string) => `## Sitzung ${label}`,
@@ -170,7 +170,7 @@ export const L = {
     emptyTodo: '(Nenhum TODO ainda)',
     emptyPin: '(Nada fixado ainda)',
     empty: '(nada)',
-    prevDay: (d: string) => `#### Dia anterior (${d})`,
+    older: (path: string) => `Anteriores: ${path}`,
     more: (n: number, path: string) => `…e mais ${n} (${path})`,
     doneTitle: (d: string) => `# Concluído em ${d}`,
     session: (label: string) => `## Sessão ${label}`,
@@ -185,7 +185,7 @@ export const L = {
     emptyTodo: '(Nessun TODO per ora)',
     emptyPin: '(Nulla di fissato per ora)',
     empty: '(niente)',
-    prevDay: (d: string) => `#### Giorno precedente (${d})`,
+    older: (path: string) => `Precedenti: ${path}`,
     more: (n: number, path: string) => `…e altri ${n} (${path})`,
     doneTitle: (d: string) => `# Fatto il ${d}`,
     session: (label: string) => `## Sessione ${label}`,
@@ -200,7 +200,7 @@ export const L = {
     emptyTodo: '(TODO пока нет)',
     emptyPin: '(Ничего не закреплено)',
     empty: '(нет)',
-    prevDay: (d: string) => `#### Предыдущий день (${d})`,
+    older: (path: string) => `Ранее: ${path}`,
     more: (n: number, path: string) => `…и ещё ${n} (${path})`,
     doneTitle: (d: string) => `# Сделано за ${d}`,
     session: (label: string) => `## Сессия ${label}`,
@@ -236,22 +236,53 @@ const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 const DONE_RE = new RegExp(`^(?:${[...new Set(Object.values(L).map(t => esc(t.done('\u0000')).replace('\u0000', '\\d{4}-\\d{2}-\\d{2}')))].join('|')})\\s*$`)
 const LEGACY_RE = /^## 今日やったこと\s*$/
 
-// Date changed: move the old done section (any language) out of the todo text. Pure; the caller does the I/O.
-export const rollover = (text: string, today: string, lang: Lang): { text: string; archived?: { date: string; body: string } } => {
+// Date changed: move every earlier done section (any language) out of the todo text, each with its body (up to the
+// next "## " heading or "---" rule). Today's heading is kept, or made from the first earlier one. Pure; the caller does the I/O.
+const RULE_RE = /^---+\s*$/
+const dateOf = (l: string) => l.match(/\d{4}-\d{2}-\d{2}/)![0]
+export const rollover = (text: string, today: string, lang: Lang): { text: string; archived: { date: string; body: string }[] } => {
   const lines = text.split('\n')
-  const i = lines.findIndex(l => DONE_RE.test(l) || LEGACY_RE.test(l))
-  if (i < 0) return { text }
-  if (LEGACY_RE.test(lines[i])) {
-    lines[i] = L[lang].done(today)
-    return { text: lines.join('\n') }
+  const first = lines.findIndex(l => DONE_RE.test(l) || LEGACY_RE.test(l))
+  if (first < 0) return { text, archived: [] }
+  if (LEGACY_RE.test(lines[first])) {
+    lines[first] = L[lang].done(today)
+    return { text: lines.join('\n'), archived: [] }
   }
-  const date = lines[i].match(/\d{4}-\d{2}-\d{2}/)![0]
-  if (date >= today) return { text }
-  let j = i + 1
-  while (j < lines.length && !lines[j].startsWith('## ')) j++
-  const body = lines.slice(i + 1, j).join('\n').trim()
-  const out = [...lines.slice(0, i), L[lang].done(today), '', ...lines.slice(j)].join('\n')
-  return body ? { text: out, archived: { date, body } } : { text: out }
+  let hasToday = lines.some(l => DONE_RE.test(l) && dateOf(l) === today)
+  const archived: { date: string; body: string }[] = []
+  const out: string[] = []
+  let changed = false
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i]
+    if (!DONE_RE.test(l) || dateOf(l) >= today) {
+      out.push(l)
+      continue
+    }
+    let j = i + 1
+    while (j < lines.length && !lines[j].startsWith('## ') && !RULE_RE.test(lines[j])) j++
+    const body = lines.slice(i + 1, j).join('\n').trim()
+    if (body) archived.push({ date: dateOf(l), body })
+    if (!hasToday) {
+      out.push(L[lang].done(today), '')
+      hasToday = true
+    }
+    changed = true
+    i = j - 1
+  }
+  if (!changed) return { text, archived }
+  // Tidy what the removal left: rules that now follow another rule, runs of blank lines, and the tail of the file.
+  const tidy: string[] = []
+  let fence = false
+  let lastText = ''
+  for (const l of out) {
+    if (/^(```|~~~)/.test(l.trimStart())) fence = !fence
+    if (!fence && RULE_RE.test(l) && RULE_RE.test(lastText)) continue
+    if (!fence && !l.trim() && tidy.length && !tidy[tidy.length - 1].trim()) continue
+    tidy.push(l)
+    if (l.trim()) lastText = l
+  }
+  while (tidy.length && (!tidy[tidy.length - 1].trim() || RULE_RE.test(tidy[tidy.length - 1]))) tidy.pop()
+  return { text: tidy.join('\n') + (text.endsWith('\n') ? '\n' : ''), archived }
 }
 
 // New content for <dir>/todo/done/<date>.md with this session's section appended.
@@ -260,26 +291,52 @@ export const appendDone = (existing: string | undefined, date: string, sessionLa
   return `${head}${L[lang].session(sessionLabel)}\n\n${body}\n`
 }
 
-// True when today's done section already has a checked item; the previous day is shown only when it has none.
-export const hasDoneToday = (text: string, date: string, lang: Lang) => {
+// Lines of `body` that are checkbox items already present verbatim in `existing` are dropped (a done file is
+// shared by sessions and can be archived into more than once).
+export const dropExisting = (existing: string | undefined, body: string) => {
+  const have = new Set((existing ?? '').split('\n').filter(l => ITEM_RE.test(l)))
+  return body.split('\n').filter(l => !(ITEM_RE.test(l) && have.has(l))).join('\n').trim()
+}
+const ITEM_RE = /^\s*- \[[ xX]\]/
+
+// An earlier day with a done file: its "- [x]" lines in file order, and where the file is.
+export type PastDay = { date: string; items: string[]; path: string }
+
+// Rows `text` takes in the pane: one per line when cut, wrapped lines take more.
+// ponytail: wrap mode estimates ceil(width / columns) per line; word wrapping and Markdown padding can take a row more.
+export const rowsOf = (text: string, cols: number, wrap: boolean) => {
   const lines = text.split('\n')
-  const i = lines.indexOf(L[lang].done(date))
-  if (i < 0) return false
-  for (const l of lines.slice(i + 1)) {
-    if (l.startsWith('## ')) break
-    if (l.startsWith('- [x]')) return true
-  }
-  return false
+  // The Markdown element adds a blank row under a heading that has no blank line after it.
+  return lines.reduce((n, l, i) => n + (wrap && cols > 0 ? Math.max(1, Math.ceil(displayWidth(l) / cols)) : 1) +
+    (/^#{1,6}\s/.test(l) && lines[i + 1]?.trim() ? 1 : 0), 0)
 }
 
-// Last 5 "- [x]" lines of a done file, for the TODO tab (display only).
-export const prevDayBlock = (date: string, fileText: string, path: string, lang: Lang) => {
-  const items = fileText.split('\n').filter(l => l.startsWith('- [x]'))
-  if (!items.length) return ''
-  const more = items.length - 5
-  const lines = items.slice(-5)
-  if (more > 0) lines.push(L[lang].more(more, path))
-  return `\n\n---\n\n${L[lang].prevDay(date)}\n\n${lines.join('\n')}`
+// Display only: the earlier days' finished items under the TODO tab, appended after the todo text (`usedRows` rows).
+// `days` are newest first (at most 3), `hasOlder` says more done files exist. The newest is always shown whole; the next
+// ones only while `bodyRows` leaves room (then the last items that fit, plus the "more" line). A line points to the folder
+// when anything earlier is not fully shown. Without a usable `bodyRows` only the newest day is shown.
+export const pastDaysBlock = (days: PastDay[], hasOlder: boolean, olderPath: string, usedRows: number, bodyRows: number, cols: number, wrap: boolean, lang: Lang) => {
+  if (!days.length) return ''
+  const sect = (d: PastDay, items: string[], more = 0) =>
+    [L[lang].done(d.date).replace(/^## /, '#### '), '', ...items, ...(more ? [L[lang].more(more, d.path)] : [])].join('\n')
+  const tail = (s: string, left: boolean) => (left ? `${s}\n\n${L[lang].older(olderPath)}` : s)
+  // The block starts on the todo text's last row.
+  const rows = (s: string) => usedRows + rowsOf(s, cols, wrap) - 1
+  let out = '\n\n---\n\n' + sect(days[0], days[0].items)
+  if (!(bodyRows > 0)) return tail(out, days.length > 1 || hasOlder)
+  for (let i = 1; i < days.length; i++) {
+    const d = days[i]
+    const full = `${out}\n\n${sect(d, d.items)}`
+    if (rows(tail(full, i < days.length - 1 || hasOlder)) <= bodyRows) {
+      out = full
+      continue
+    }
+    const part = (k: number) => `${out}\n\n${sect(d, d.items.slice(-k), d.items.length - k)}`
+    let k = d.items.length - 1
+    while (k >= 1 && rows(tail(part(k), true)) > bodyRows) k--
+    return tail(k >= 1 ? part(k) : out, true)
+  }
+  return tail(out, hasOlder)
 }
 
 // Display width of one code point: East Asian Wide/Fullwidth and emoji take 2 columns, the rest 1.
@@ -408,7 +465,7 @@ export const truncateForWidth = (markdown: string, columns: number): string => {
 
 // Display only: puts `label` (italic, the closest Markdown has to dim) under each "##" to "######" heading that has
 // no content before the next heading of the same or higher level (same or fewer #), the "---" rule that starts the
-// previous-day block, or the end of the todo part. A heading followed by a deeper one (e.g. "###" under "##") is not
+// past-days block, or the end of the todo part. A heading followed by a deeper one (e.g. "###" under "##") is not
 // empty. Fenced code is skipped. The todo file itself is never changed.
 export const markEmptySections = (text: string, label: string): string => {
   const lines = text.split('\n')
@@ -472,6 +529,8 @@ const PIN_PANE = 'pin-board'
 // The engine's scan needs each atom named directly where read/update use it, so the two boards are spelled out.
 const nowText = atom({ plugin: 'todo-pane', key: 'text' } as const, '')
 const pinText = atom({ plugin: 'todo-pane', key: 'pin' } as const, '')
+// JSON of { days: PastDay[], older: boolean }: earlier days' finished items, laid out by the render handler (it knows the rows).
+const pastText = atom({ plugin: 'todo-pane', key: 'past' } as const, '')
 // true: long TODO lines wrap; false (default): they are cut with "…". Saved with $.store so it outlives the session.
 const wrapOn = atom({ plugin: 'todo-pane', key: 'wrap' } as const, false)
 // Same for the pins pane, which defaults to wrapping.
@@ -483,6 +542,7 @@ const rule = (f: string, lang: Lang) => [
   '- Write every item as a checkbox: `- [ ] ` for open, `- [x] ` for done. Never use a plain `- ` bullet.',
   `- Before starting any work that changes files or Notion, first write it under "${L[lang].now}" in ${f}.`,
   `- When the work is done, check it and move it under "${L[lang].done(today())}"; keep remaining items in their sections.`,
+  `- Only today's done heading ("${L[lang].done(today())}") belongs in ${f}; never write done headings for earlier days, the plugin moves them to the done/ folder.`,
   `- When the topic changes, update the "${L[lang].now}" section to match.`,
   '- Write the items in the language the user is writing in.',
 ].join('\n')
@@ -552,21 +612,27 @@ async function rollOver($: any) {
   const text = String(await $.fs.read(p.todo))
   const r = rollover(text, today(), lang)
   if (r.text !== text) await $.fs.write(p.todo, r.text)
-  if (!r.archived) return
-  const file = `${dir}/todo/done/${r.archived.date}.md`
-  await $.process.run(['mkdir', '-p', `${dir}/todo/done`])
-  const existing = await $.fs.read(file).then(String).catch(() => undefined)
-  await $.fs.write(file, appendDone(existing, r.archived.date, base, r.archived.body, lang))
+  for (const a of r.archived) {
+    const file = `${dir}/todo/done/${a.date}.md`
+    await $.process.run(['mkdir', '-p', `${dir}/todo/done`])
+    const existing = await $.fs.read(file).then(String).catch(() => undefined)
+    const body = dropExisting(existing, a.body)
+    if (body) await $.fs.write(file, appendDone(existing, a.date, base, body, lang))
+  }
 }
 
-// Most recent earlier day's finished items, shown under the TODO tab only.
-async function prevDay($: any) {
+// The latest 3 earlier days that have a done file, shown under the TODO tab only (as JSON for pastText).
+async function pastDays($: any) {
   const names: { name: string }[] = await $.fs.list(`${dir}/todo/done`).catch(() => [])
   const t = today()
-  const last = names.map(n => n.name).filter(n => /^\d{4}-\d{2}-\d{2}\.md$/.test(n) && n.slice(0, 10) < t).sort().pop()
-  if (!last) return ''
-  const path = `${dir}/todo/done/${last}`
-  return prevDayBlock(last.slice(0, 10), String(await $.fs.read(path).catch(() => '')), path, lang)
+  const all = names.map(n => n.name).filter(n => /^\d{4}-\d{2}-\d{2}\.md$/.test(n) && n.slice(0, 10) < t).sort().reverse()
+  const days: PastDay[] = []
+  for (const n of all.slice(0, 3)) {
+    const path = `${dir}/todo/done/${n}`
+    const items = String(await $.fs.read(path).catch(() => '')).split('\n').filter(l => l.startsWith('- [x]'))
+    if (items.length) days.push({ date: n.slice(0, 10), items, path })
+  }
+  return JSON.stringify({ days, older: all.length > 3 })
 }
 
 // What a pane command does: not open -> open it in front; open but behind another tab -> bring it forward; in front -> close.
@@ -598,9 +664,11 @@ export const register: Register = (on, options) => {
       await sync($).catch(() => {})
       await archiveIfNeeded($).catch(() => {})
       const file = String(await $.fs.read(p.todo).catch(() => '')).slice(0, 9000)
-      const now = file ? file + (hasDoneToday(file, today(), lang) ? '' : await prevDay($)) : file
+      const now = file
+      const past = file ? await pastDays($) : ''
       const pin = String(await $.fs.read(p.pin).catch(() => '')).slice(0, 9000)
       await update($, nowText, prev => (prev === now ? prev : now))
+      await update($, pastText, prev => (prev === past ? prev : past))
       await update($, pinText, prev => (prev === pin ? prev : pin))
       return pin
     }
@@ -714,8 +782,13 @@ export const register: Register = (on, options) => {
     const body = await read($, nowText)
     // Width of this draw; the engine redraws when it changes. Without one, nothing is cut.
     const cols = Number((e.props as any)?.bodyColumns)
-    const text = body ? markEmptySections(numberSubsections(body), L[lang].empty) : L[lang].emptyTodo
+    const todo = body ? markEmptySections(numberSubsections(body), L[lang].empty) : L[lang].emptyTodo
     const wrap = await read($, wrapOn)
+    // Rows of this draw; without them only the newest earlier day is shown.
+    const rows = Number((e.props as any)?.scroll?.bodyRows)
+    let past = { days: [] as PastDay[], older: false }
+    try { past = JSON.parse((await read($, pastText)) || 'null') ?? past } catch {}
+    const text = body ? todo + pastDaysBlock(past.days, past.older, `${dir}/todo/done/`, rowsOf(todo, cols, wrap), rows, cols, wrap, lang) : todo
     return (
       <Box flexDirection="column">
         <Markdown text={wrap || !(cols > 0) ? text : truncateForWidth(text, cols)} />

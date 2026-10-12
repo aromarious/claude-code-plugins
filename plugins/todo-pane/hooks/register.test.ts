@@ -1,5 +1,5 @@
 import { test, expect } from 'claude-code/testing'
-import { isWrite, baseName, sanitize, pathsFor, lastTitle, hasDoneToday, paneAction, truncateForWidth, displayWidth, wrapTarget, fitTable, markEmptySections, numberSubsections } from './register'
+import { isWrite, baseName, sanitize, pathsFor, lastTitle, rollover, dropExisting, pastDaysBlock, rowsOf, paneAction, truncateForWidth, displayWidth, wrapTarget, fitTable, markEmptySections, numberSubsections } from './register'
 
 const NOW = '.claude/todo/a-123456.md'
 const OFF = '.claude/todo/a-123456.off'
@@ -69,13 +69,76 @@ test('submit: own off marker leaves only the pin rule', async ($, on) => {
   expect(c[0]).toContain('.claude/pin/foo-012345.md')
 })
 
-test('previous day is hidden once today has a checked item', () => {
-  const d = '2026-10-09'
-  const head = `## 今\n- [ ] a\n\n## やったこと（${d}）\n`
-  expect(hasDoneToday(head, d, 'ja')).toBe(false)
-  expect(hasDoneToday(head + '- [x] done\n', d, 'ja')).toBe(true)
-  expect(hasDoneToday(`## やったこと（2026-10-08）\n- [x] old\n`, d, 'ja')).toBe(false)
-  expect(hasDoneToday(head + '\n## 次\n- [x] elsewhere\n', d, 'ja')).toBe(false)
+const T = '2026-10-12'
+
+test('rollover: every earlier done section is archived, stray rules removed, one heading for today', () => {
+  const text = `## 今\n- [ ] a\n\n## やったこと（${T}）\n- [x] t\n\n---\n\n## やったこと（2026-10-07）\n- [x] b\n\n## やったこと（2026-10-06）\n- [x] c\n\n---\n`
+  const r = rollover(text, T, 'ja')
+  expect(r.archived).toEqual([{ date: '2026-10-07', body: '- [x] b' }, { date: '2026-10-06', body: '- [x] c' }])
+  expect(r.text).toBe(`## 今\n- [ ] a\n\n## やったこと（${T}）\n- [x] t\n`)
+})
+
+test('rollover: the first earlier heading becomes today\'s when there is none; a section ends at ## or ---', () => {
+  const text = `## 今\n\n## Done (2026-10-09)\n- [x] a\n\n---\n\n## 次\n- [ ] n\n`
+  const r = rollover(text, T, 'en')
+  expect(r.archived).toEqual([{ date: '2026-10-09', body: '- [x] a' }])
+  expect(r.text).toBe(`## 今\n\n## Done (${T})\n\n---\n\n## 次\n- [ ] n\n`.replace('\n\n---\n\n## 次', '\n\n---\n\n## 次'))
+})
+
+test('rollover: today only, legacy heading and no heading', () => {
+  const t = `## やったこと（${T}）\n- [x] a\n`
+  expect(rollover(t, T, 'ja')).toEqual({ text: t, archived: [] })
+  expect(rollover('## 今日やったこと\n- [x] a\n', T, 'en')).toEqual({ text: `## Done (${T})\n- [x] a\n`, archived: [] })
+  expect(rollover('## 今\n', T, 'en')).toEqual({ text: '## 今\n', archived: [] })
+})
+
+test('dropExisting: items already in the done file are skipped', () => {
+  expect(dropExisting('# x\n\n- [x] a\n- [ ] b\n', '- [x] a\n- [x] c')).toBe('- [x] c')
+  expect(dropExisting('- [x] a', '- [x] a')).toBe('')
+  expect(dropExisting(undefined, '- [x] a')).toBe('- [x] a')
+})
+
+const day = (date: string, n: number): { date: string; items: string[]; path: string } =>
+  ({ date, items: Array.from({ length: n }, (_, i) => `- [x] ${date}-${i + 1}`), path: `d/${date}.md` })
+const D = [day('2026-10-11', 3), day('2026-10-10', 2), day('2026-10-09', 2)]
+const blk = (days = D, older = false, used = 5, rows = 100) => pastDaysBlock(days, older, 'd/', used, rows, 80, false, 'en')
+
+test('pastDaysBlock: plenty of rows shows all three days and no link', () => {
+  const b = blk()
+  expect(b).toBe('\n\n---\n\n#### Done (2026-10-11)\n\n- [x] 2026-10-11-1\n- [x] 2026-10-11-2\n- [x] 2026-10-11-3\n\n#### Done (2026-10-10)\n\n- [x] 2026-10-10-1\n- [x] 2026-10-10-2\n\n#### Done (2026-10-09)\n\n- [x] 2026-10-09-1\n- [x] 2026-10-09-2')
+  expect(blk(D, true)).toContain('\n\nEarlier: d/')
+})
+
+test('pastDaysBlock: the newest day is always whole, even over budget, and the rest is dropped', () => {
+  const b = blk(D, false, 5, 3)
+  expect(b).toContain('2026-10-11-3')
+  expect(b).not.toContain('2026-10-10')
+  expect(b.endsWith('Earlier: d/')).toBe(true)
+  expect(pastDaysBlock(D, false, 'd/', 5, NaN, 80, false, 'en')).not.toContain('2026-10-10')
+})
+
+test('pastDaysBlock: the second day fits whole, the third is cut to the last items with the more line', () => {
+  const days = [D[0], D[1], day('2026-10-09', 4)]
+  const r0 = 5 + rowsOf(blk(days.slice(0, 2), false), 80, false) - 1 // rows of the first two days
+  const link = 2 // blank line + link
+  // third day: blank + heading + blank + 1 item + more line, then the link
+  const partial = blk(days, true, 5, r0 + 1 + 4 + link)
+  expect(partial).toContain('#### Done (2026-10-09)\n\n- [x] 2026-10-09-4\n…and 3 more (d/2026-10-09.md)\n\nEarlier: d/')
+  expect(blk(days, true, 5, r0 + 1 + 4 + link + 1)).toContain('- [x] 2026-10-09-3\n- [x] 2026-10-09-4\n…and 2 more')
+  // whole third day: blank + heading + blank + 4 items, no link needed
+  expect(blk(days, false, 5, r0 + 1 + 6)).toContain('- [x] 2026-10-09-1')
+  expect(blk(days, false, 5, r0 + 1 + 6)).not.toContain('Earlier')
+  // not even one item fits: the third day is dropped and the link appears
+  const dropped = blk(days, false, 5, r0 + link + 3)
+  expect(dropped).not.toContain('2026-10-09')
+  expect(dropped).toContain('Earlier: d/')
+})
+
+test('pastDaysBlock: wrap mode counts wrapped rows', () => {
+  expect(rowsOf('a\nb', 10, false)).toBe(2)
+  expect(rowsOf('x'.repeat(25) + '\nb', 10, true)).toBe(4)
+  expect(rowsOf('あ'.repeat(10), 10, true)).toBe(2)
+  expect(rowsOf('## a\n- x\n\n## b\n\n- y', 10, false)).toBe(7)
 })
 
 test('paneAction: open, bring forward, or close', () => {
@@ -207,8 +270,8 @@ test('markEmptySections: headings and rules inside fenced code are ignored', () 
 })
 
 test('markEmptySections: previous-day block after --- is not part of the last section', () => {
-  const t = '## A\n- [ ] a\n\n## B\n\n---\n\n#### Previous day (2026-10-11)\n\n- [x] y'
-  expect(mark(t)).toBe('## A\n- [ ] a\n\n## B\n_(none)_\n\n---\n\n#### Previous day (2026-10-11)\n\n- [x] y')
+  const t = '## A\n- [ ] a\n\n## B\n\n---\n\n#### Done (2026-10-11)\n\n- [x] y'
+  expect(mark(t)).toBe('## A\n- [ ] a\n\n## B\n_(none)_\n\n---\n\n#### Done (2026-10-11)\n\n- [x] y')
   const u = '## A\n- [ ] a\n\n---\n\n## fake\n'
   expect(mark(u)).toBe(u)
 })
