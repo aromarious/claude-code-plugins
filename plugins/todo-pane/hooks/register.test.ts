@@ -1,5 +1,5 @@
 import { test, expect } from 'claude-code/testing'
-import { isWrite, baseName, sanitize, pathsFor, lastTitle, hasDoneToday, paneAction, truncateForWidth, displayWidth, wrapTarget } from './register'
+import { isWrite, baseName, sanitize, pathsFor, lastTitle, hasDoneToday, paneAction, truncateForWidth, displayWidth, wrapTarget, fitTable } from './register'
 
 const NOW = '.claude/todo/a-123456.md'
 const OFF = '.claude/todo/a-123456.off'
@@ -108,7 +108,7 @@ test('truncateForWidth: nested sub-task keeps indentation and checkbox', () => {
   expect(displayWidth(r)).toBeLessThanOrEqual(28)
 })
 
-test('truncateForWidth: code fences, tables and blanks are untouched', () => {
+test('truncateForWidth: code fences, non-table pipe lines and blanks are untouched', () => {
   const src = ['```', 'z'.repeat(100), '```', '| ' + 'c'.repeat(100) + ' |', '', 'w'.repeat(100)].join('\n')
   const lines = truncateForWidth(src, 40).split('\n')
   expect(lines[1]).toBe('z'.repeat(100))
@@ -130,4 +130,58 @@ test('wrapTarget: the shown pane of ours decides, else nothing', () => {
   expect(wrapTarget([{ id: 'todo-pane', isShown: false }, { id: 'pin-board', isShown: true }])).toBe('pin')
   expect(wrapTarget([{ id: 'todo-pane', isShown: false }, { id: 'pin-board', isShown: false }])).toBeUndefined()
   expect(wrapTarget([])).toBeUndefined()
+})
+
+const cells = (row: string) => row.slice(2, -2).split(' | ')
+
+test('fitTable: a table that fits is only normalized, not shortened', () => {
+  const t = ['| a | b |', '|---|---|', '| 1 | 2 |']
+  expect(fitTable(t, 40)).toEqual(t)
+})
+
+test('fitTable: wide ASCII table shrinks only the long column', () => {
+  const t = ['| id | note |', '|---|---|', '| 1 | ' + 'n'.repeat(80) + ' |', '| 22 | ok |']
+  const r = fitTable(t, 40)
+  expect(r[0]).toBe('| id | note |'.replace('note', 'note'.padEnd(4)))
+  expect(cells(r[2])[0]).toBe('1')
+  expect(cells(r[2])[1].endsWith('…')).toBe(true)
+  expect(r[3]).toBe('| 22 | ok |')
+  for (const row of [r[0], r[2], r[3]]) expect(displayWidth(cells(row).join('')) + 3 * 2 + 1).toBeLessThanOrEqual(38)
+  expect(r[1]).toBe('|---|---|')
+})
+
+test('fitTable: Japanese wide chars count as 2 columns', () => {
+  const t = ['| 項目 | 説明 |', '|---|---|', '| a | ' + 'あ'.repeat(40) + ' |']
+  const r = fitTable(t, 40)
+  const c = cells(r[2])
+  expect(c[1].endsWith('…')).toBe(true)
+  expect(displayWidth(c[0]) + displayWidth(c[1]) + 7).toBeLessThanOrEqual(38)
+})
+
+test('fitTable: alignment colons are kept', () => {
+  const t = ['| a | b | c |', '|:--|:-:|--:|', '| 1 | ' + 'x'.repeat(60) + ' | 3 |']
+  expect(fitTable(t, 30)[1]).toBe('|:--|:-:|--:|')
+})
+
+test('fitTable: lines without a delimiter row are untouched', () => {
+  const t = ['| ' + 'a'.repeat(80) + ' |', '| ' + 'b'.repeat(80) + ' |']
+  expect(fitTable(t, 30)).toEqual(t)
+  expect(truncateForWidth(t.join('\n'), 30)).toBe(t.join('\n'))
+})
+
+test('fitTable: a cut inside an inline code span leaves it balanced; a pipe inside it is not a separator', () => {
+  const t = ['| k | v |', '|---|---|', '| 1 | text `' + 'c'.repeat(60) + '` more |', '| 2 | `a|b` |']
+  const r = fitTable(t, 30)
+  expect((r[2].match(/`/g) ?? []).length % 2).toBe(0)
+  expect(r[3]).toBe('| 2 | `a|b` |')
+})
+
+test('truncateForWidth: fits tables inside text and leaves tables in code fences', () => {
+  const tbl = ['| a | b |', '|---|---|', '| 1 | ' + 'z'.repeat(80) + ' |']
+  const out = truncateForWidth(['intro', ...tbl, 'after'].join('\n'), 30).split('\n')
+  expect(out[0]).toBe('intro')
+  expect(out[3]).toContain('…')
+  expect(out[4]).toBe('after')
+  const fenced = ['```', ...tbl, '```'].join('\n')
+  expect(truncateForWidth(fenced, 30)).toBe(fenced)
 })
