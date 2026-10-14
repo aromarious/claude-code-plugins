@@ -869,9 +869,10 @@ export const register: Register = (on, options) => {
     void openPane($, NOW_PANE, L[lang].todoTitle)
     // The pin board opens at start only when this session's file exists; /todo-pane-pinboard opens it later.
     if (pin) void openPane($, PIN_PANE, L[lang].pinTitle)
-    // Last, and each guarded: a taken name must not stop the panes or the timer above.
+    // Last, and each guarded: a taken name must not stop the panes or the timer above. Immediate: they only open,
+    // close or toggle a pane, so they run mid-turn instead of waiting for Claude to finish.
     for (const [name, description] of [['todo-pane', 'Open, bring forward, or close the TODO pane'], ['todo-pane-pinboard', 'Open, bring forward, or close the pinboard pane'], ['todo-pane-wrap', 'Toggle wrapping long lines in the pane in front']])
-      try { await $.command.register({ name, description }) } catch (err) { $.ui.log(`command ${name} not registered: ${err}`, { to: 'debug' }) }
+      try { await $.command.register({ name, description, immediate: true }) } catch (err) { $.ui.log(`command ${name} not registered: ${err}`, { to: 'debug' }) }
 
     return next(e)
   })
