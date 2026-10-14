@@ -1,5 +1,5 @@
 import { test, expect } from 'claude-code/testing'
-import { isWrite, baseName, sanitize, pathsFor, lastTitle, rollover, dropExisting, pastDaysBlock, sessionItems, rowsOf, paneAction, truncateForWidth, displayWidth, wrapTarget, fitTable, markEmptySections, numberSubsections } from './register'
+import { isWrite, baseName, sanitize, pathsFor, lastTitle, rollover, dropExisting, pastDaysBlock, sessionItems, rowsOf, paneAction, truncateForWidth, displayWidth, wrapTarget, fitTable, markEmptySections, numberSubsections, fixSkinTone, parseSpans, wrapSpans, layoutTable, splitTables } from './register'
 
 const NOW = '.claude/todo/a-123456.md'
 const OFF = '.claude/todo/a-123456.off'
@@ -317,4 +317,53 @@ test('sessionItems: Japanese and other-language headings, other ## headings end 
 })
 test('sessionItems: a label that only contains the id is not a match', () => {
   expect(sessionItems('## Session xabcdef12\n- [x] a\n## Session abcdef-zzzzzz\n- [x] b\n', ID)).toEqual([])
+})
+test('fixSkinTone: a skin tone on a text-style emoji becomes VS16; on an emoji-style one it stays', () => {
+  expect(fixSkinTone('✍🏻見積 👍🏻')).toBe('✍️見積 👍🏻')
+  expect(displayWidth(fixSkinTone('✍🏻'))).toBe(2)
+  expect(displayWidth('👍🏻')).toBe(2)
+  expect(displayWidth('✅')).toBe(2)
+})
+test('fitTable: a cut inside bold drops the open ** instead of drawing it', () => {
+  const t = ['| a | b |', '|---|---|', '| x | 子があれば「計」という**文字列**、無ければ自分の値 |']
+  const cell = splitCells(fitTable(t, 30)[2])[1]
+  expect(cell.split('**').length % 2).toBe(1)
+  expect(cell.endsWith('…')).toBe(true)
+})
+const splitCells = (row: string) => row.slice(1, -1).split('|').map(c => c.trim())
+
+test('parseSpans: code, bold, strike, link text, escaped pipe', () => {
+  expect(parseSpans('a `b` **c** ~~d~~ [e](http://x) f\\|g')).toEqual([
+    { text: 'a ' }, { text: 'b', code: true }, { text: ' ' }, { text: 'c', bold: true }, { text: ' ' },
+    { text: 'd', strike: true }, { text: ' ' }, { text: 'e' }, { text: ' f|g' },
+  ])
+})
+
+test('wrapSpans: wraps by display width, at a space when there is one', () => {
+  const j = (l: { text: string }[][]) => l.map(x => x.map(s => s.text).join(''))
+  expect(j(wrapSpans([{ text: 'あいうえおか' }], 6))).toEqual(['あいう', 'えおか'])
+  expect(j(wrapSpans([{ text: 'hello world' }], 8))).toEqual(['hello', 'world'])
+  expect(j(wrapSpans([{ text: 'ab', bold: true }, { text: 'cdef' }], 3))).toEqual(['abc', 'def'])
+  expect(wrapSpans([{ text: '' }], 3)).toEqual([[]])
+})
+
+test('layoutTable: box lines fit the width, long cells wrap inside', () => {
+  const t = ['| 項目 | 内容 |', '|---|:-:|', '| **a** | これは長い説明文で折り返される `code` ✍🏻 |', '| b | c |']
+  const lines = layoutTable(t, 30).map(l => l.map(s => s.text).join(''))
+  expect(lines.every(l => displayWidth(l) <= 28)).toBe(true)
+  expect(lines[0]).toMatch(/^┌─+┬─+┐$/)
+  expect(lines[lines.length - 1]).toMatch(/^└─+┴─+┘$/)
+  expect(lines.filter(l => l.startsWith('│')).length).toBeGreaterThan(3)
+  expect(lines.some(l => l.includes('code'))).toBe(true)
+  expect(new Set(lines.map(displayWidth)).size).toBe(1)
+})
+
+test('splitTables: tables apart from text, none inside fences', () => {
+  const md = ['# T', '| a | b |', '|---|---|', '| 1 | 2 |', 'after', '```', '| x |', '|---|', '```'].join('\n')
+  const p = splitTables(md)
+  expect(p).toEqual([{ text: '# T' }, { table: ['| a | b |', '|---|---|', '| 1 | 2 |'] }, { text: ['after', '```', '| x |', '|---|', '```'].join('\n') }])
+})
+
+test('rowsOf counts a drawn table by its height', () => {
+  expect(rowsOf(['| a | b |', '|---|---|', '| 1 | 2 |'].join('\n'), 40, true)).toBe(5)
 })

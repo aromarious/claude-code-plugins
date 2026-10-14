@@ -321,7 +321,13 @@ export type PastDay = { date: string; items: string[]; path: string }
 
 // Rows `text` takes in the pane: one per line when cut, wrapped lines take more.
 // ponytail: wrap mode estimates ceil(width / columns) per line; word wrapping and Markdown padding can take a row more.
-export const rowsOf = (text: string, cols: number, wrap: boolean) => {
+export const rowsOf = (text: string, cols: number, wrap: boolean): number => {
+  // ponytail: tables are drawn by layoutTable, so they count their drawn height; the heading-before-table blank row is not counted.
+  if (cols > 0 && text.includes('|')) {
+    const parts = splitTables(text)
+    if (parts.some(p => 'table' in p))
+      return parts.reduce((n, p) => n + ('table' in p ? layoutTable(p.table, cols).length : rowsOf(p.text, cols, wrap)), 0)
+  }
   const lines = text.split('\n')
   // The Markdown element adds a blank row under a heading that has no blank line after it.
   return lines.reduce((n, l, i) => n + (wrap && cols > 0 ? Math.max(1, Math.ceil(displayWidth(l) / cols)) : 1) +
@@ -364,11 +370,26 @@ const isWide = (c: number) =>
   (c >= 0xac00 && c <= 0xd7a3) || (c >= 0xf900 && c <= 0xfaff) || (c >= 0xfe30 && c <= 0xfe6f) ||
   (c >= 0xff00 && c <= 0xff60) || (c >= 0xffe0 && c <= 0xffe6) || (c >= 0x1f300 && c <= 0x1faff) ||
   (c >= 0x20000 && c <= 0x3fffd)
-export const displayWidth = (s: string) => {
-  let w = 0
-  for (const ch of s) w += isWide(ch.codePointAt(0)!) ? 2 : 1
-  return w
+// Splits `s` into drawn units with their widths; a VS16 or skin tone joins the character before it as one 2-column unit.
+// ponytail: ZWJ sequences still count per part.
+const units = (s: string) => {
+  const out: [string, number][] = []
+  for (const ch of s) {
+    const c = ch.codePointAt(0)!
+    const last = out[out.length - 1]
+    if (last && (c === 0xfe0f || (c >= 0x1f3fb && c <= 0x1f3ff))) {
+      last[0] += ch
+      last[1] = 2
+    } else out.push([ch, isWide(c) || /\p{Emoji_Presentation}/u.test(ch) ? 2 : 1])
+  }
+  return out
 }
+export const displayWidth = (s: string) => units(s).reduce((w, [, cw]) => w + cw, 0)
+
+// An emoji that defaults to text style with a skin tone (✍🏻) is counted 4 columns by the Markdown table and fewer
+// by the terminal, which breaks the row. Display only: the tone becomes VS16 (✍️), which both draw 2 columns wide.
+export const fixSkinTone = (s: string) =>
+  s.replace(/(\p{Extended_Pictographic})(?<!\p{Emoji_Presentation})\uFE0F?[\u{1F3FB}-\u{1F3FF}]/gu, '$1\uFE0F')
 const LIST_RE = /^(\s*(?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s+)?)/
 const HEADING_RE = /^(#{1,6}\s+)/
 const MARGIN = 2
@@ -377,16 +398,16 @@ const MARGIN = 2
 const cutTo = (s: string, budget: number) => {
   let cut = ''
   let w = 0
-  for (const ch of s) {
-    const cw = isWide(ch.codePointAt(0)!) ? 2 : 1
+  for (const [ch, cw] of units(s)) {
     if (w + cw > budget - 1) break
     cut += ch
     w += cw
   }
-  // No half-open link or code span: either would swallow what follows.
+  // No half-open link, code span, bold or strikethrough: each would be drawn as raw marks.
   const lb = cut.lastIndexOf('[')
   if (lb >= 0 && !/\]\([^)]*\)/.test(cut.slice(lb))) cut = cut.slice(0, lb)
-  if ((cut.match(/`/g) ?? []).length % 2) cut = cut.slice(0, cut.lastIndexOf('`'))
+  for (const m of ['`', '**', '~~'])
+    if (cut.split(m).length % 2 === 0) cut = cut.slice(0, cut.lastIndexOf(m))
   return cut.replace(/\\$/, '') + '…'
 }
 
@@ -419,12 +440,9 @@ const isDelimiter = (cells: string[]) => cells.length > 0 && cells.every(c => /^
 // Rendered width is sum(column widths) + 3 per column + 1 ("│ a │ b │"), kept MARGIN columns short of the pane.
 const TABLE_MIN = 3
 
-// Shrinks a GFM table (header, delimiter row, body rows) so it fits `columns`: the widest column loses a column
-// at a time, then cells wider than their column are cut with "…". Not a table (no valid delimiter row): unchanged.
-export const fitTable = (lines: string[], columns: number): string[] => {
-  if (lines.length < 2) return lines
-  const rows = lines.map(splitRow)
-  if (!isDelimiter(rows[1])) return lines
+// Column widths for `rows` (row 0 header, row 1 the delimiter row, ignored) so the table fits `columns`:
+// the widest column loses a column at a time, down to its minimum.
+export const tableWidths = (rows: string[][], columns: number): number[] => {
   const n = Math.max(...rows.map(r => r.length))
   const widths = Array.from({ length: n }, (_, i) =>
     Math.max(1, ...rows.map((r, k) => (k === 1 ? 1 : displayWidth(r[i] ?? '')))))
@@ -437,11 +455,138 @@ export const fitTable = (lines: string[], columns: number): string[] => {
     if (k < 0) break
     widths[k]--
   }
+  return widths
+}
+
+// Shrinks a GFM table (header, delimiter row, body rows) so it fits `columns`: columns shrink by tableWidths,
+// then cells wider than their column are cut with "…". Not a table (no valid delimiter row): unchanged.
+export const fitTable = (lines: string[], columns: number): string[] => {
+  if (lines.length < 2) return lines
+  const rows = lines.map(splitRow)
+  if (!isDelimiter(rows[1])) return lines
+  const widths = tableWidths(rows, columns)
   return rows.map((r, k) => {
     if (k === 1) return lines[1]
     const cells = r.map((c, i) => (displayWidth(c) > widths[i] ? cutTo(c, widths[i]) : c))
     return `| ${cells.join(' | ')} |`
   })
+}
+
+// A drawn piece of a table cell or border: plain text plus the marks it carries.
+export type Span = { text: string; bold?: boolean; code?: boolean; strike?: boolean }
+
+// Cell source to spans: `code`, **bold**, ~~strike~~, [text](url) -> text, "\\|" -> "|"; other marks stay as typed.
+// ponytail: no nesting (bold inside a link, code inside bold are drawn flat); one mark per span.
+export const parseSpans = (cell: string): Span[] => {
+  const out: Span[] = []
+  const re = /`([^`]+)`|\*\*(.+?)\*\*|~~(.+?)~~|\[([^\]]+)\]\([^)]*\)/g
+  const plain = (t: string) => t && out.push({ text: t.replace(/\\\|/g, '|') })
+  let at = 0
+  for (const m of cell.matchAll(re)) {
+    plain(cell.slice(at, m.index))
+    if (m[1] !== undefined) out.push({ text: m[1], code: true })
+    else if (m[2] !== undefined) out.push({ text: m[2], bold: true })
+    else if (m[3] !== undefined) out.push({ text: m[3], strike: true })
+    else plain(m[4])
+    at = m.index! + m[0].length
+  }
+  plain(cell.slice(at))
+  return out
+}
+const plainOf = (spans: Span[]) => spans.map(s => s.text).join('')
+
+// Wraps spans to lines of at most `width` display columns. Breaks at the last space when there is one, else at any unit.
+export const wrapSpans = (spans: Span[], width: number): Span[][] => {
+  type U = { ch: string; cw: number; sp: Span }
+  const us: U[] = spans.flatMap(sp => units(sp.text).map(([ch, cw]) => ({ ch, cw, sp })))
+  const lines: U[][] = []
+  let cur: U[] = []
+  let w = 0
+  for (const u of us) {
+    if (w + u.cw > width && cur.length) {
+      const sp = cur.map(x => x.ch).lastIndexOf(' ')
+      if (sp > 0) {
+        lines.push(cur.slice(0, sp))
+        cur = cur.slice(sp + 1)
+      } else {
+        lines.push(cur)
+        cur = []
+      }
+      w = cur.reduce((a, x) => a + x.cw, 0)
+    }
+    cur.push(u)
+    w += u.cw
+  }
+  lines.push(cur)
+  return lines.map(l => {
+    const out: Span[] = []
+    for (const u of l) {
+      const last = out[out.length - 1]
+      if (last && last.bold === u.sp.bold && last.code === u.sp.code && last.strike === u.sp.strike) last.text += u.ch
+      else out.push({ ...u.sp, text: u.ch })
+    }
+    return out
+  })
+}
+
+// Lays out a GFM table (header, delimiter row, rows) in `columns`: box-drawing lines, each a list of spans.
+// Cells wrap inside their column; a header is bold and centered, body cells follow the delimiter row's alignment.
+export const layoutTable = (lines: string[], columns: number): Span[][] => {
+  const rows = lines.map(splitRow)
+  const cells = rows.map((r, k) => (k === 1 ? r : r.map(c => parseSpans(c))))
+  const drawn = rows.map((r, k) => (k === 1 ? r : (cells[k] as Span[][]).map(plainOf)))
+  const widths = tableWidths(drawn, columns)
+  const n = widths.length
+  const align = Array.from({ length: n }, (_, i) => {
+    const d = rows[1][i] ?? ''
+    return d.startsWith(':') && d.endsWith(':') ? 'c' : d.endsWith(':') ? 'r' : 'l'
+  })
+  const border = (l: string, m: string, r: string): Span[] => [{ text: l + widths.map(x => '─'.repeat(x + 2)).join(m) + r }]
+  const out: Span[][] = [border('┌', '┬', '┐')]
+  rows.forEach((_, k) => {
+    if (k === 1) return
+    const wrapped = Array.from({ length: n }, (_, i) => wrapSpans((cells[k] as Span[][])[i] ?? [], widths[i]))
+    const h = Math.max(...wrapped.map(c => c.length))
+    for (let j = 0; j < h; j++) {
+      const line: Span[] = [{ text: '│' }]
+      wrapped.forEach((c, i) => {
+        const sp = (c[j] ?? []).map(s => (k === 0 ? { ...s, bold: true } : s))
+        const gap = widths[i] - displayWidth(plainOf(sp))
+        const a = k === 0 ? 'c' : align[i]
+        const left = a === 'c' ? Math.floor(gap / 2) : a === 'r' ? gap : 0
+        line.push({ text: ' ' + ' '.repeat(left) }, ...sp, { text: ' '.repeat(gap - left) + ' │' })
+      })
+      out.push(line)
+    }
+    out.push(border(...(k === rows.length - 1 ? ['└', '┴', '┘'] : ['├', '┼', '┤']) as [string, string, string]))
+  })
+  return out
+}
+
+// Splits Markdown into text pieces and GFM tables (lines starting with "|" whose 2nd line is a delimiter row).
+// Fenced code is never a table.
+export const splitTables = (markdown: string): ({ text: string } | { table: string[] })[] => {
+  const lines = markdown.split('\n')
+  const out: ({ text: string } | { table: string[] })[] = []
+  let buf: string[] = []
+  let fence = false
+  const flush = () => {
+    if (buf.length) out.push({ text: buf.join('\n') })
+    buf = []
+  }
+  for (let i = 0; i < lines.length; i++) {
+    const t = lines[i].trimStart()
+    if (/^(```|~~~)/.test(t)) fence = !fence
+    if (!fence && t.startsWith('|') && lines[i + 1]?.trimStart().startsWith('|') && isDelimiter(splitRow(lines[i + 1]))) {
+      let j = i
+      while (j < lines.length && lines[j].trimStart().startsWith('|')) j++
+      flush()
+      out.push({ table: lines.slice(i, j) })
+      i = j - 1
+    } else buf.push(lines[i])
+  }
+  flush()
+  return out
 }
 
 // Cuts each over-long line to `columns` display columns and ends it with "…", so the Markdown element
@@ -676,6 +821,26 @@ export const wrapTarget = (panes: readonly { id: string; isShown: boolean }[]): 
   return shown === NOW_PANE ? 'todo' : shown === PIN_PANE ? 'pin' : undefined
 }
 
+// Markdown for a pane `cols` wide: tables are drawn by layoutTable, fitted to the pane (Markdown wraps them at the
+// terminal width instead); the rest stays Markdown, through `cut`. Without a width it is plain Markdown.
+const mdOf = ({ Box, Markdown, Text }: any, cols: number, cut: (x: string) => string) => (x: string, dimColor?: boolean) =>
+  cols > 0
+    ? splitTables(x).map((p, i) =>
+        'table' in p ? (
+          <Box flexDirection="column">
+            {layoutTable(p.table, cols).map((l, j) => (
+              <Text wrap="truncate" dimColor={dimColor}>
+                {l.map((s, k) => (
+                  <Text bold={s.bold} strikethrough={s.strike} color={s.code ? 'suggestion' : undefined}>{s.text}</Text>
+                ))}
+              </Text>
+            ))}
+          </Box>
+        ) : (
+          <Markdown dimColor={dimColor} text={cut(p.text)} />
+        ))
+    : <Markdown dimColor={dimColor} text={x} />
+
 export const register: Register = (on, options) => {
   dir = dirFrom(options)
   p = pathsFor(dir, base)
@@ -802,8 +967,8 @@ export const register: Register = (on, options) => {
   })
 
   on('ui.render', { component: 'Pane', requestId: NOW_PANE }, async ($, e) => {
-    const { Box, Markdown } = $.ui.resolve(e)
-    const body = await read($, nowText)
+    const { Box, Markdown, Text } = $.ui.resolve(e)
+    const body = fixSkinTone(await read($, nowText))
     // Width of this draw; the engine redraws when it changes. Without one, nothing is cut.
     const cols = Number((e.props as any)?.bodyColumns)
     const todo = body ? markEmptySections(numberSubsections(body), L[lang].empty) : L[lang].emptyTodo
@@ -815,12 +980,13 @@ export const register: Register = (on, options) => {
     // The block starts "\n\n---"; the blank row between the parts becomes marginTop, and the block is drawn faint.
     const block = body ? pastDaysBlock(past.days, past.older, `${dir}/todo/done/`, rowsOf(todo, cols, wrap), rows, cols, wrap, lang) : ''
     const cut = (x: string) => (wrap || !(cols > 0) ? x : truncateForWidth(x, cols))
+    const md = mdOf({ Box, Markdown, Text }, cols, cut)
     return (
       <Box flexDirection="column">
-        <Markdown text={cut(todo)} />
+        {md(todo)}
         {block && (
           <Box marginTop={1}>
-            <Markdown dimColor text={cut(block.replace(/^\n+/, ''))} />
+            {md(block.replace(/^\n+/, ''), true)}
           </Box>
         )}
       </Box>
@@ -828,14 +994,16 @@ export const register: Register = (on, options) => {
   })
 
   on('ui.render', { component: 'Pane', requestId: PIN_PANE }, async ($, e) => {
-    const { Box, Markdown } = $.ui.resolve(e)
-    const body = await read($, pinText)
+    const { Box, Markdown, Text } = $.ui.resolve(e)
+    const body = fixSkinTone(await read($, pinText))
     const cols = Number((e.props as any)?.bodyColumns)
     const text = body || L[lang].emptyPin
     const wrap = await read($, pinWrapOn)
+    const cut = (x: string) => (wrap || !(cols > 0) ? x : truncateForWidth(x, cols))
+    const md = mdOf({ Box, Markdown, Text }, cols, cut)
     return (
       <Box flexDirection="column">
-        <Markdown text={wrap || !(cols > 0) ? text : truncateForWidth(text, cols)} />
+        {md(text)}
       </Box>
     )
   })
