@@ -1,5 +1,5 @@
 import { test, expect } from 'claude-code/testing'
-import { isWrite, baseName, sanitize, pathsFor, lastTitle, rollover, dropExisting, pastDaysBlock, sessionItems, rowsOf, paneAction, truncateForWidth, displayWidth, wrapTarget, fitTable, markEmptySections, numberSubsections } from './register'
+import { isWrite, baseName, sanitize, pathsFor, lastTitle, rollover, dropExisting, pastDaysBlock, sessionItems, rowsOf, paneAction, truncateForWidth, displayWidth, wrapTarget, fitTable, markEmptySections, numberSubsections, fixSkinTone } from './register'
 
 const NOW = '.claude/todo/a-123456.md'
 const OFF = '.claude/todo/a-123456.off'
@@ -318,3 +318,16 @@ test('sessionItems: Japanese and other-language headings, other ## headings end 
 test('sessionItems: a label that only contains the id is not a match', () => {
   expect(sessionItems('## Session xabcdef12\n- [x] a\n## Session abcdef-zzzzzz\n- [x] b\n', ID)).toEqual([])
 })
+test('fixSkinTone: a skin tone on a text-style emoji becomes VS16; on an emoji-style one it stays', () => {
+  expect(fixSkinTone('✍🏻見積 👍🏻')).toBe('✍️見積 👍🏻')
+  expect(displayWidth(fixSkinTone('✍🏻'))).toBe(2)
+  expect(displayWidth('👍🏻')).toBe(2)
+  expect(displayWidth('✅')).toBe(2)
+})
+test('fitTable: a cut inside bold drops the open ** instead of drawing it', () => {
+  const t = ['| a | b |', '|---|---|', '| x | 子があれば「計」という**文字列**、無ければ自分の値 |']
+  const cell = splitCells(fitTable(t, 30)[2])[1]
+  expect(cell.split('**').length % 2).toBe(1)
+  expect(cell.endsWith('…')).toBe(true)
+})
+const splitCells = (row: string) => row.slice(1, -1).split('|').map(c => c.trim())

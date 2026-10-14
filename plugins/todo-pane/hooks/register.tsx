@@ -364,11 +364,26 @@ const isWide = (c: number) =>
   (c >= 0xac00 && c <= 0xd7a3) || (c >= 0xf900 && c <= 0xfaff) || (c >= 0xfe30 && c <= 0xfe6f) ||
   (c >= 0xff00 && c <= 0xff60) || (c >= 0xffe0 && c <= 0xffe6) || (c >= 0x1f300 && c <= 0x1faff) ||
   (c >= 0x20000 && c <= 0x3fffd)
-export const displayWidth = (s: string) => {
-  let w = 0
-  for (const ch of s) w += isWide(ch.codePointAt(0)!) ? 2 : 1
-  return w
+// Splits `s` into drawn units with their widths; a VS16 or skin tone joins the character before it as one 2-column unit.
+// ponytail: ZWJ sequences still count per part.
+const units = (s: string) => {
+  const out: [string, number][] = []
+  for (const ch of s) {
+    const c = ch.codePointAt(0)!
+    const last = out[out.length - 1]
+    if (last && (c === 0xfe0f || (c >= 0x1f3fb && c <= 0x1f3ff))) {
+      last[0] += ch
+      last[1] = 2
+    } else out.push([ch, isWide(c) || /\p{Emoji_Presentation}/u.test(ch) ? 2 : 1])
+  }
+  return out
 }
+export const displayWidth = (s: string) => units(s).reduce((w, [, cw]) => w + cw, 0)
+
+// An emoji that defaults to text style with a skin tone (✍🏻) is counted 4 columns by the Markdown table and fewer
+// by the terminal, which breaks the row. Display only: the tone becomes VS16 (✍️), which both draw 2 columns wide.
+export const fixSkinTone = (s: string) =>
+  s.replace(/(\p{Extended_Pictographic})(?<!\p{Emoji_Presentation})\uFE0F?[\u{1F3FB}-\u{1F3FF}]/gu, '$1\uFE0F')
 const LIST_RE = /^(\s*(?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s+)?)/
 const HEADING_RE = /^(#{1,6}\s+)/
 const MARGIN = 2
@@ -377,16 +392,16 @@ const MARGIN = 2
 const cutTo = (s: string, budget: number) => {
   let cut = ''
   let w = 0
-  for (const ch of s) {
-    const cw = isWide(ch.codePointAt(0)!) ? 2 : 1
+  for (const [ch, cw] of units(s)) {
     if (w + cw > budget - 1) break
     cut += ch
     w += cw
   }
-  // No half-open link or code span: either would swallow what follows.
+  // No half-open link, code span, bold or strikethrough: each would be drawn as raw marks.
   const lb = cut.lastIndexOf('[')
   if (lb >= 0 && !/\]\([^)]*\)/.test(cut.slice(lb))) cut = cut.slice(0, lb)
-  if ((cut.match(/`/g) ?? []).length % 2) cut = cut.slice(0, cut.lastIndexOf('`'))
+  for (const m of ['`', '**', '~~'])
+    if (cut.split(m).length % 2 === 0) cut = cut.slice(0, cut.lastIndexOf(m))
   return cut.replace(/\\$/, '') + '…'
 }
 
@@ -803,7 +818,7 @@ export const register: Register = (on, options) => {
 
   on('ui.render', { component: 'Pane', requestId: NOW_PANE }, async ($, e) => {
     const { Box, Markdown } = $.ui.resolve(e)
-    const body = await read($, nowText)
+    const body = fixSkinTone(await read($, nowText))
     // Width of this draw; the engine redraws when it changes. Without one, nothing is cut.
     const cols = Number((e.props as any)?.bodyColumns)
     const todo = body ? markEmptySections(numberSubsections(body), L[lang].empty) : L[lang].emptyTodo
@@ -829,7 +844,7 @@ export const register: Register = (on, options) => {
 
   on('ui.render', { component: 'Pane', requestId: PIN_PANE }, async ($, e) => {
     const { Box, Markdown } = $.ui.resolve(e)
-    const body = await read($, pinText)
+    const body = fixSkinTone(await read($, pinText))
     const cols = Number((e.props as any)?.bodyColumns)
     const text = body || L[lang].emptyPin
     const wrap = await read($, pinWrapOn)
