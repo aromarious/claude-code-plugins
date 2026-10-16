@@ -979,7 +979,7 @@ export const register: Register = (on, options) => {
     let past = { days: [] as PastDay[], older: false }
     try { past = JSON.parse((await read($, pastText)) || 'null') ?? past } catch {}
     // The block starts "\n\n---"; the blank row between the parts becomes marginTop, and the block is drawn faint.
-    const block = body ? pastDaysBlock(past.days, past.older, `${dir}/todo/done/`, rowsOf(todo, cols, wrap), rows, cols, wrap, lang) : ''
+    const block = body ? fixSkinTone(pastDaysBlock(past.days, past.older, `${dir}/todo/done/`, rowsOf(todo, cols, wrap), rows, cols, wrap, lang)) : ''
     const cut = (x: string) => (wrap || !(cols > 0) ? x : truncateForWidth(x, cols))
     const md = mdOf({ Box, Markdown, Text }, cols, cut)
     return (
