@@ -1,5 +1,5 @@
 import { test, expect } from 'claude-code/testing'
-import { isWrite, baseName, sanitize, pathsFor, lastTitle, renameSources, rollover, dropExisting, pastDaysBlock, sessionItems, rowsOf, paneAction, truncateForWidth, displayWidth, wrapTarget, fitTable, markEmptySections, numberSubsections, fixSkinTone, parseSpans, wrapSpans, layoutTable, splitTables } from './register'
+import { isWrite, baseName, sanitize, pathsFor, baseFor, renameSources, rollover, dropExisting, pastDaysBlock, sessionItems, rowsOf, paneAction, truncateForWidth, displayWidth, wrapTarget, fitTable, markEmptySections, numberSubsections, fixSkinTone, parseSpans, wrapSpans, layoutTable, splitTables } from './register'
 
 const NOW = '.claude/todo/a-123456.md'
 const OFF = '.claude/todo/a-123456.off'
@@ -23,26 +23,21 @@ test('base: name + 6 chars of id, or 8 chars of id; separators and controls beco
   expect(pathsFor('out', 'x')).toMatchObject({ todo: 'out/todo/x.md', pin: 'out/pin/x.md', off: 'out/todo/x.off' })
 })
 
-test('lastTitle picks the latest custom-title line', () => {
-  const t = [
-    '{"type":"user"}',
-    '{"type":"custom-title","customTitle":"old","sessionId":"s"}',
-    '{"type":"custom-title","customTitle":"new","sessionId":"s"}',
-    'garbage "custom-title"',
-  ].join('\n')
-  expect(lastTitle(t)).toBe('new')
-  expect(lastTitle('{"type":"user"}')).toBeUndefined()
+test('baseFor: title unknown keeps the current base, no name or a name rebuilds it', () => {
+  const id = '0123456789abcdef'
+  expect(baseFor(undefined, id, '設計-012345')).toBe('設計-012345')
+  expect(baseFor(undefined, id, '')).toBe('01234567')
+  expect(baseFor(null, id, '設計-012345')).toBe('01234567')
+  expect(baseFor('新-', id, '設計-012345')).toBe('新--012345')
 })
 
-// Answers session.id, process.run (transcript tail) and fs.exists from a set of files; returns the context the model gets.
+// Answers session.id and fs.exists from a set of files; returns the context the model gets for a prompt whose session_title is `title`.
 const contextWith = async ($: any, on: any, files: string[], title = 'foo') => {
   on('session.id', async () => ({ value: '0123456789abcdef' }) as any)
-  on('process.run', async () => ({ value: { exitCode: 0, stdout: `{"type":"custom-title","customTitle":"${title}"}\n`, stderr: '' } }) as any)
   on('fs.exists', async (_$: any, e: { path: string }) => ({ value: files.some(f => e.path.endsWith(f)) }) as any)
-  let seen: readonly string[] | undefined
-  on('prompt.submit', async (_$: any, e: any) => { seen = e.context; return { text: e.text } })
-  await $.prompt.submit({ text: 'hi' })
-  return seen ?? []
+  on('classic.UserPromptSubmit', async () => ({}))
+  const r = await $.classic.UserPromptSubmit({ prompt: 'hi', session_title: title })
+  return r?.additionalContext ?? []
 }
 
 test('submit: own board present gives the rule', async ($, on) => {
