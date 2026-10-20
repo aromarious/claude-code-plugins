@@ -20,18 +20,6 @@ export const pathsFor = (dir: string, base: string) => ({
   pin: `${dir}/pin/${base}.md`,
   off: `${dir}/todo/${base}.off`,
 })
-// The latest {"type":"custom-title"} line in the transcript's tail, if any
-export const lastTitle = (text: string): string | undefined => {
-  let title: string | undefined
-  for (const line of text.split('\n')) {
-    if (!line.includes('"custom-title"')) continue
-    try {
-      const j = JSON.parse(line)
-      if (j.type === 'custom-title' && typeof j.customTitle === 'string') title = j.customTitle
-    } catch {}
-  }
-  return title
-}
 // Local date as YYYY-MM-DD (toISOString would be UTC)
 export const today = () => {
   const d = new Date()
@@ -697,6 +685,8 @@ const pastText = atom({ plugin: 'todo-pane', key: 'past' } as const, '')
 const wrapOn = atom({ plugin: 'todo-pane', key: 'wrap' } as const, false)
 // Same for the pins pane, which defaults to wrapping.
 const pinWrapOn = atom({ plugin: 'todo-pane', key: 'pinWrap' } as const, true)
+// The topic name from the classic hooks' session_title: undefined = not heard yet, null = the session has no name.
+const titleState = atom({ plugin: 'todo-pane', key: 'title' } as const, undefined as string | null | undefined)
 
 // Sent to the model every turn, so the board stays current without relying on memory.
 const rule = (f: string, lang: Lang) => [
@@ -732,12 +722,13 @@ let sessionId = ''
 let base = ''
 let p = pathsFor(dir, '')
 
-// Latest custom-title from the transcript's tail (the file can exceed fs.read's 4 MiB, so tail it).
-async function titleOf($: any, id: string) {
-  const script = 'f=$(ls "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/projects/*/"$1".jsonl 2>/dev/null | head -1); [ -n "$f" ] && tail -n 500 "$f"'
-  const r = await $.process.run(['sh', '-c', script, 'sh', id]).catch(() => undefined)
-  return r ? lastTitle(String(r.stdout)) : undefined
-}
+// Where the files may still be, if the name changed: the previous base and the id-only name (what an unreadable title left behind).
+export const renameSources = (prev: string, next: string, id: string) =>
+  [prev, id.slice(0, 8)].filter((b, i, a) => b && b !== next && a.indexOf(b) === i)
+
+// <base> for a remembered title: not heard yet keeps the current base (or starts from the id if there is none).
+export const baseFor = (title: string | null | undefined, id: string, current: string) =>
+  title === undefined && current ? current : baseName(title ?? undefined, id)
 
 // Recompute <base>; if it changed, carry the old files (todo, pin and off) to the new names.
 async function sync($: any) {
@@ -748,17 +739,25 @@ async function sync($: any) {
     langRead = true
   }
   if (!sessionId) sessionId = await $.session.id()
-  const next = baseName(await titleOf($, sessionId), sessionId)
-  if (next === base) return
-  const old = base ? pathsFor(dir, base) : undefined
+  const next = baseFor(await read($, titleState), sessionId, base)
+  const prev = base
   base = next
   p = pathsFor(dir, base)
-  if (!old) return
-  for (const k of ['todo', 'pin', 'off'] as const) {
-    if (!(await $.fs.exists(old[k])) || (await $.fs.exists(p[k]))) continue
-    await $.fs.write(p[k], String(await $.fs.read(old[k])))
-    await $.process.run(['rm', '-f', old[k]])
+  // Even with the name unchanged: files an earlier version left under the id-only name come back.
+  for (const from of renameSources(prev, next, sessionId)) {
+    const old = pathsFor(dir, from)
+    for (const k of ['todo', 'pin', 'off'] as const) {
+      if (!(await $.fs.exists(old[k])) || (await $.fs.exists(p[k]))) continue
+      await $.fs.write(p[k], String(await $.fs.read(old[k])))
+      await $.process.run(['rm', '-f', old[k]])
+    }
   }
+}
+
+// session_title is the topic name now (absent: no name). Remember it, then sync so the files follow a /rename.
+async function hear($: any, e: { session_title?: string }) {
+  await update($, titleState, () => e.session_title ?? null)
+  await sync($).catch(() => {})
 }
 
 // Roll the done section over when the date changed. Runs outside Claude's tool calls and before turn.start
@@ -879,13 +878,24 @@ export const register: Register = (on, options) => {
 
   // Attached to every prompt as context the model reads beside it (never shown, text untouched),
   // so the instruction reflects the board's state at that turn; prompt.compose is frozen after the first turn.
-  on('prompt.submit', async ($, e, next) => {
-    await sync($).catch(() => {})
+  on('classic.SessionStart', async ($, e, next) => {
+    await hear($, e)
+    return next(e)
+  })
+
+  // Attached to every prompt as context the model reads beside it (never shown, text untouched),
+  // so the instruction reflects the board's state at that turn; prompt.compose is frozen after the first turn.
+  // Built here, not in prompt.submit: next(e) there runs the UserPromptSubmit hooks beneath, so this is the first
+  // point where the turn's session_title is known and the file names in the rule are the new ones.
+  on('classic.UserPromptSubmit', async ($, e, next) => {
+    await hear($, e)
     await archiveIfNeeded($).catch(() => {})
     const pin = pinRule(p.pin, lang)
-    if (await $.fs.exists(p.off)) return next({ ...e, context: [...(e.context ?? []), pin] })
-    const text = (await $.fs.exists(p.todo)) ? (missed ? `${rule(p.todo, lang)}\n${missedText(p.todo)}` : rule(p.todo, lang)) : ask(p.todo, p.off, lang)
-    return next({ ...e, context: [...(e.context ?? []), text, pin] })
+    const texts = (await $.fs.exists(p.off))
+      ? [pin]
+      : [(await $.fs.exists(p.todo)) ? (missed ? `${rule(p.todo, lang)}\n${missedText(p.todo)}` : rule(p.todo, lang)) : ask(p.todo, p.off, lang), pin]
+    const r = await next(e)
+    return { ...r, additionalContext: [...(r?.additionalContext ?? []), ...texts] }
   })
 
   on('turn.start', async ($, e, next) => {
