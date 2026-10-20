@@ -740,10 +740,10 @@ async function sync($: any) {
   }
   if (!sessionId) sessionId = await $.session.id()
   const next = baseFor(await read($, titleState), sessionId, base)
-  if (next === base) return
   const prev = base
   base = next
   p = pathsFor(dir, base)
+  // Even with the name unchanged: files an earlier version left under the id-only name come back.
   for (const from of renameSources(prev, next, sessionId)) {
     const old = pathsFor(dir, from)
     for (const k of ['todo', 'pin', 'off'] as const) {
