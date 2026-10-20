@@ -732,12 +732,19 @@ let sessionId = ''
 let base = ''
 let p = pathsFor(dir, '')
 
-// Latest custom-title from the transcript's tail (the file can exceed fs.read's 4 MiB, so tail it).
+// Latest custom-title line from the transcript. The file can be huge and single lines very long, so grep inside the
+// shell and return only the matching line: the tail first, the whole file only if the tail has none.
+// null = the read itself failed (keep the current names); undefined = read fine, no name.
 async function titleOf($: any, id: string) {
-  const script = 'f=$(ls "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/projects/*/"$1".jsonl 2>/dev/null | head -1); [ -n "$f" ] && tail -n 500 "$f"'
+  const script = 'f=$(ls "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/projects/*/"$1".jsonl 2>/dev/null | head -1); [ -n "$f" ] || exit 0; t=$(tail -c 4000000 "$f" | grep -F \'"custom-title"\' | tail -n 1); [ -n "$t" ] || t=$(grep -F \'"custom-title"\' "$f" | tail -n 1); printf \'%s\' "$t"'
   const r = await $.process.run(['sh', '-c', script, 'sh', id]).catch(() => undefined)
-  return r ? lastTitle(String(r.stdout)) : undefined
+  if (!r || (r.exitCode ?? 0) !== 0) return null
+  return lastTitle(String(r.stdout))
 }
+
+// Where the files may still be, if the name changed: the previous base and the id-only name (what an unreadable title left behind).
+export const renameSources = (prev: string, next: string, id: string) =>
+  [prev, id.slice(0, 8)].filter((b, i, a) => b && b !== next && a.indexOf(b) === i)
 
 // Recompute <base>; if it changed, carry the old files (todo, pin and off) to the new names.
 async function sync($: any) {
@@ -748,16 +755,20 @@ async function sync($: any) {
     langRead = true
   }
   if (!sessionId) sessionId = await $.session.id()
-  const next = baseName(await titleOf($, sessionId), sessionId)
+  const title = await titleOf($, sessionId)
+  if (title === null && base) return
+  const next = baseName(title ?? undefined, sessionId)
   if (next === base) return
-  const old = base ? pathsFor(dir, base) : undefined
+  const prev = base
   base = next
   p = pathsFor(dir, base)
-  if (!old) return
-  for (const k of ['todo', 'pin', 'off'] as const) {
-    if (!(await $.fs.exists(old[k])) || (await $.fs.exists(p[k]))) continue
-    await $.fs.write(p[k], String(await $.fs.read(old[k])))
-    await $.process.run(['rm', '-f', old[k]])
+  for (const from of renameSources(prev, next, sessionId)) {
+    const old = pathsFor(dir, from)
+    for (const k of ['todo', 'pin', 'off'] as const) {
+      if (!(await $.fs.exists(old[k])) || (await $.fs.exists(p[k]))) continue
+      await $.fs.write(p[k], String(await $.fs.read(old[k])))
+      await $.process.run(['rm', '-f', old[k]])
+    }
   }
 }
 

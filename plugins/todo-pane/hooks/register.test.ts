@@ -1,5 +1,5 @@
 import { test, expect } from 'claude-code/testing'
-import { isWrite, baseName, sanitize, pathsFor, lastTitle, rollover, dropExisting, pastDaysBlock, sessionItems, rowsOf, paneAction, truncateForWidth, displayWidth, wrapTarget, fitTable, markEmptySections, numberSubsections, fixSkinTone, parseSpans, wrapSpans, layoutTable, splitTables } from './register'
+import { isWrite, baseName, sanitize, pathsFor, lastTitle, renameSources, rollover, dropExisting, pastDaysBlock, sessionItems, rowsOf, paneAction, truncateForWidth, displayWidth, wrapTarget, fitTable, markEmptySections, numberSubsections, fixSkinTone, parseSpans, wrapSpans, layoutTable, splitTables } from './register'
 
 const NOW = '.claude/todo/a-123456.md'
 const OFF = '.claude/todo/a-123456.off'
@@ -366,4 +366,12 @@ test('splitTables: tables apart from text, none inside fences', () => {
 
 test('rowsOf counts a drawn table by its height', () => {
   expect(rowsOf(['| a | b |', '|---|---|', '| 1 | 2 |'].join('\n'), 40, true)).toBe(5)
+})
+
+test('renameSources lists the previous base and the id-only name, never the new one', () => {
+  const id = '0123456789abcdef'
+  expect(renameSources('設計-012345', '設計-012345', id)).toEqual(['01234567'])
+  expect(renameSources('01234567', '設計-012345', id)).toEqual(['01234567'])
+  expect(renameSources('', '設計-012345', id)).toEqual(['01234567'])
+  expect(renameSources('旧-012345', '01234567', id)).toEqual(['旧-012345'])
 })
